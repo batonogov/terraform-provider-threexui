@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.25.0](https://github.com/batonogov/terraform-provider-threexui/compare/v3.24.0...v3.25.0) (2026-09-07)
+
+
+### Features
+
+* add stream_settings (incl. tls_settings) to xray_outbounds ([#455](https://github.com/batonogov/terraform-provider-threexui/issues/455)) ([58b9b72](https://github.com/batonogov/terraform-provider-threexui/commit/58b9b72330b6c01dc9268311ae31f0a5b668de95))
+
 ## [3.24.0](https://github.com/batonogov/terraform-provider-threexui/compare/v3.23.1...v3.24.0) (2026-08-25)
 
 
