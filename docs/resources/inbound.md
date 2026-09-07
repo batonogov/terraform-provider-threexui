@@ -497,6 +497,15 @@ Typed MTProto server settings available on 3x-ui v3.3.0+. On v3.5.0+, per-client
   > `min_client_ver = "0.0.0"` for no lower bound, `max_client_ver = "255.255.255"`
   > for no upper bound, `max_timediff = 0` for no time check.
 
+- `tls_settings` (Optional, Block) - TLS client settings (used when `security = "tls"`).
+  - `server_name` (Optional, String) - Server name (SNI) for the TLS handshake.
+  - `fingerprint` (Optional, String) - Client fingerprint (e.g. `chrome`, `firefox`).
+  - `allow_insecure` (Optional, Boolean) - Whether to allow insecure TLS connections.
+  - `alpn` (Optional, List of String) - ALPN list (e.g. `["h2", "http/1.1"]`).
+  - `min_version` (Optional, String) - Minimum TLS version (e.g. `1.2`).
+  - `max_version` (Optional, String) - Maximum TLS version (e.g. `1.3`).
+  - `cipher` (Optional, String) - TLS cipher suite.
+
 - `external_proxy` (Optional, Block List) - External proxy entries.
   - `dest` (Optional, String)
   - `port` (Optional, Number)

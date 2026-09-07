@@ -1727,6 +1727,218 @@ func TestBuildXrayOutboundsJSON_Roundtrip(t *testing.T) {
 	}
 }
 
+// Stream settings declared on an outbound must make it all the way through
+// buildXrayOutboundsJSON into the camelCase streamSettings xray stores — the
+// lossy round-trip that used to silently strip the TLS settings from vless
+// outbounds (the whole outbounds array is rewritten via setJSONPath).
+func TestBuildXrayOutboundsJSON_StreamSettings(t *testing.T) {
+	input := map[string]any{
+		"outbound": []any{
+			map[string]any{
+				"tag":      "proxy",
+				"protocol": "vless",
+				"vless_settings": []any{map[string]any{
+					"address": "34.88.128.98", "port": 443, "id": "uuid",
+					"encryption": "none",
+				}},
+				"stream_settings": []any{
+					map[string]any{
+						"network":  "tcp",
+						"security": "tls",
+						"tls_settings": []any{
+							map[string]any{
+								"server_name":    "gcp.aistreams.cloud",
+								"fingerprint":    "chrome",
+								"allow_insecure": false,
+								"alpn":           []any{"h2", "http/1.1"},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	wire := buildXrayOutboundsJSON(input)
+	entries, ok := wire.([]any)
+	if !ok || len(entries) != 1 {
+		t.Fatalf("expected 1 outbound, got %#v", wire)
+	}
+	entry, ok := entries[0].(map[string]any)
+	if !ok {
+		t.Fatalf("entry not a map: %#v", entries[0])
+	}
+	ss, ok := entry["streamSettings"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected streamSettings object, got %#v", entry)
+	}
+	if ss["security"] != "tls" {
+		t.Fatalf("expected security=tls, got %v", ss["security"])
+	}
+	tls, ok := ss["tlsSettings"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected tlsSettings object, got %#v", ss)
+	}
+	if tls["serverName"] != "gcp.aistreams.cloud" {
+		t.Fatalf("expected serverName, got %v", tls["serverName"])
+	}
+
+	// The round-trip back into the snake_case map must preserve the block.
+	flat := flattenXrayOutboundsToMap(wire)
+	flattened := flat["outbound"].([]any)[0].(map[string]any)
+	ssOut, ok := flattened["stream_settings"].([]any)
+	if !ok || len(ssOut) != 1 {
+		t.Fatalf("expected stream_settings on the read path, got %#v", flattened)
+	}
+	first := ssOut[0].(map[string]any)
+	tlsOut, ok := first["tls_settings"].([]any)
+	if !ok || len(tlsOut) != 1 {
+		t.Fatalf("expected tls_settings on the read path, got %#v", first)
+	}
+	ts := tlsOut[0].(map[string]any)
+	if ts["server_name"] != "gcp.aistreams.cloud" {
+		t.Fatalf("expected server_name after round-trip, got %v", ts["server_name"])
+	}
+}
+
+// An outbound without stream settings must NOT gain a streamSettings key — a
+// hypothetical drift signal for every protocol that predates this feature.
+func TestBuildXrayOutboundsJSON_StreamSettingsAbsent(t *testing.T) {
+	input := map[string]any{
+		"outbound": []any{
+			map[string]any{
+				"tag":              "direct",
+				"protocol":         "freedom",
+				"freedom_settings": []any{map[string]any{"domain_strategy": "AsIs"}},
+			},
+		},
+	}
+	wire := buildXrayOutboundsJSON(input)
+	entry := wire.([]any)[0].(map[string]any)
+	if _, ok := entry["streamSettings"]; ok {
+		t.Fatalf("unexpected streamSettings key: %#v", entry)
+	}
+}
+
+// --- mergeOutboundStreamSettingsFromState ---
+
+func mergeTestOutboundObjectType() types.ObjectType {
+	return types.ObjectType{AttrTypes: map[string]attr.Type{
+		"tag": types.StringType,
+		"stream_settings": types.ObjectType{AttrTypes: map[string]attr.Type{
+			"network":      types.StringType,
+			"security":     types.StringType,
+			"tls_settings": types.ListType{ElemType: types.ObjectType{AttrTypes: map[string]attr.Type{}}},
+		}},
+	}}
+}
+
+func mergeTestOutboundObj(objectType types.ObjectType, tag string, ss attr.Value) types.Object {
+	attrs := map[string]attr.Value{
+		"tag":             types.StringValue(tag),
+		"stream_settings": ss,
+	}
+	return types.ObjectValueMust(objectType.AttrTypes, attrs)
+}
+
+func mergeTestStreamSettings() types.Object {
+	return types.ObjectValueMust(map[string]attr.Type{
+		"network":      types.StringType,
+		"security":     types.StringType,
+		"tls_settings": types.ListType{ElemType: types.ObjectType{AttrTypes: map[string]attr.Type{}}},
+	}, map[string]attr.Value{
+		"network":  types.StringValue("tcp"),
+		"security": types.StringValue("tls"),
+		"tls_settings": types.ListValueMust(
+			types.ObjectType{AttrTypes: map[string]attr.Type{}},
+			[]attr.Value{types.ObjectValueMust(map[string]attr.Type{}, map[string]attr.Value{})},
+		),
+	})
+}
+
+func TestMergeOutboundStreamSettingsFromState_PreservesUndeclared(t *testing.T) {
+	obType := mergeTestOutboundObjectType()
+	ssType := obType.AttrTypes["stream_settings"].(types.ObjectType)
+	nullSS := types.ObjectNull(ssType.AttrTypes)
+	configured := types.ListValueMust(obType, []attr.Value{
+		mergeTestOutboundObj(obType, "proxy", nullSS),
+	})
+	state := types.ListValueMust(obType, []attr.Value{
+		mergeTestOutboundObj(obType, "proxy", mergeTestStreamSettings()),
+	})
+
+	merged := mergeOutboundStreamSettingsFromState(configured, state)
+	elems := merged.Elements()
+	if len(elems) != 1 {
+		t.Fatalf("expected 1 element, got %d", len(elems))
+	}
+	obj := elems[0].(types.Object)
+	saved := obj.Attributes()["stream_settings"]
+	if saved.IsNull() || saved.IsUnknown() {
+		t.Fatalf("expected stream_settings to be inherited from state, got %v", saved)
+	}
+	if got := saved.(types.Object).Attributes()["security"].(types.String).ValueString(); got != "tls" {
+		t.Fatalf("expected security=tls, got %v", got)
+	}
+	if merged.Equal(configured) {
+		t.Fatal("merged must differ from configured so ModifyPlan persists it")
+	}
+}
+
+func TestMergeOutboundStreamSettingsFromState_DeclaredBlockWins(t *testing.T) {
+	obType := mergeTestOutboundObjectType()
+	ssType := obType.AttrTypes["stream_settings"].(types.ObjectType)
+	declared := types.ObjectValueMust(ssType.AttrTypes, map[string]attr.Value{
+		"network":  types.StringValue("ws"),
+		"security": types.StringValue("none"),
+		"tls_settings": types.ListNull(
+			types.ObjectType{AttrTypes: map[string]attr.Type{}},
+		),
+	})
+	configured := types.ListValueMust(obType, []attr.Value{
+		mergeTestOutboundObj(obType, "proxy", declared),
+	})
+	state := types.ListValueMust(obType, []attr.Value{
+		mergeTestOutboundObj(obType, "proxy", mergeTestStreamSettings()),
+	})
+
+	merged := mergeOutboundStreamSettingsFromState(configured, state)
+	if !merged.Equal(configured) {
+		t.Fatal("a declared stream_settings block must not be overwritten by state")
+	}
+	obj := merged.Elements()[0].(types.Object)
+	if got := obj.Attributes()["stream_settings"].(types.Object).Attributes()["network"].(types.String).ValueString(); got != "ws" {
+		t.Fatalf("expected network=ws from config, got %v", got)
+	}
+}
+
+func TestMergeOutboundStreamSettingsFromState_NoState(t *testing.T) {
+	obType := mergeTestOutboundObjectType()
+	ssType := obType.AttrTypes["stream_settings"].(types.ObjectType)
+	configured := types.ListValueMust(obType, []attr.Value{
+		mergeTestOutboundObj(obType, "proxy", types.ObjectNull(ssType.AttrTypes)),
+	})
+	if merged := mergeOutboundStreamSettingsFromState(configured, types.ListNull(obType)); !merged.Equal(configured) {
+		t.Fatal("null state must not alter the configured list")
+	}
+	if merged := mergeOutboundStreamSettingsFromState(configured, types.ListValueMust(obType, nil)); !merged.Equal(configured) {
+		t.Fatal("empty state must not alter the configured list")
+	}
+}
+
+func TestMergeOutboundStreamSettingsFromState_TagMismatch(t *testing.T) {
+	obType := mergeTestOutboundObjectType()
+	ssType := obType.AttrTypes["stream_settings"].(types.ObjectType)
+	configured := types.ListValueMust(obType, []attr.Value{
+		mergeTestOutboundObj(obType, "other", types.ObjectNull(ssType.AttrTypes)),
+	})
+	state := types.ListValueMust(obType, []attr.Value{
+		mergeTestOutboundObj(obType, "proxy", mergeTestStreamSettings()),
+	})
+	if merged := mergeOutboundStreamSettingsFromState(configured, state); !merged.Equal(configured) {
+		t.Fatal("different tags must not inherit stream_settings")
+	}
+}
+
 // --- Tests for review fixes ---
 
 func TestFlattenBasicsPolicyLevels_Sorted(t *testing.T) {

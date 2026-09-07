@@ -977,6 +977,13 @@ func (r *XrayOutboundsResource) ImportState(ctx context.Context, _ resource.Impo
 // unknown outbound collection and known collections containing unknown object
 // elements. A wholly unknown collection is left to the schema plan modifiers;
 // otherwise the complete configured list replaces any index-polluted plan.
+//
+// stream_settings is Optional+Computed with UseStateForUnknown, but a
+// practitioner who never declared it has no config value to plan from — the
+// schema modifier restores the prior state object into the plan, and the
+// wholesale configured-list reset below must not drop it. The configured
+// elements are therefore re-merged with the prior state's stream_settings
+// (matched by tag) whenever the configuration omits the block.
 func (r *XrayOutboundsResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
 	if req.Plan.Raw.IsNull() || req.State.Raw.IsNull() {
 		return
@@ -994,7 +1001,90 @@ func (r *XrayOutboundsResource) ModifyPlan(ctx context.Context, req resource.Mod
 		return
 	}
 
+	var stateOutbound types.List
+	resp.Diagnostics.Append(req.State.GetAttribute(ctx, resourcepath.Root("outbound"), &stateOutbound)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if merged := mergeOutboundStreamSettingsFromState(configured, stateOutbound); !merged.Equal(configured) {
+		resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, resourcepath.Root("outbound"), merged)...)
+		return
+	}
+
 	resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, resourcepath.Root("outbound"), configured)...)
+}
+
+// mergeOutboundStreamSettingsFromState copies the prior state's stream_settings
+// object onto each configured outbound element (matched by tag) whose
+// configuration omits the block. Without it, the "configured list is
+// authoritative" reset above would strip a server-populated stream_settings —
+// e.g. the TLS settings that make a vless outbound reachable — on every
+// unrelated update, because the schema's UseStateForUnknown plan modifier can
+// only restore the object into the plan, not into a configuration that declared
+// nothing. Tag identifies an outbound across list reorders.
+func mergeOutboundStreamSettingsFromState(configured, stateList types.List) types.List {
+	if configured.IsNull() || configured.IsUnknown() || len(configured.Elements()) == 0 {
+		return configured
+	}
+	if stateList.IsNull() || stateList.IsUnknown() || len(stateList.Elements()) == 0 {
+		return configured
+	}
+
+	stateByTag := map[string]attr.Value{}
+	for _, e := range stateList.Elements() {
+		obj, ok := e.(types.Object)
+		if !ok {
+			continue
+		}
+		tag, ok := obj.Attributes()["tag"].(types.String)
+		if !ok || tag.IsNull() || tag.IsUnknown() {
+			continue
+		}
+		if ss, ok := obj.Attributes()["stream_settings"]; ok && !ss.IsNull() && !ss.IsUnknown() {
+			stateByTag[tag.ValueString()] = ss
+		}
+	}
+	if len(stateByTag) == 0 {
+		return configured
+	}
+
+	ctx := context.Background()
+	elems := make([]attr.Value, 0, len(configured.Elements()))
+	changed := false
+	for _, e := range configured.Elements() {
+		obj, ok := e.(types.Object)
+		if !ok {
+			elems = append(elems, e)
+			continue
+		}
+		attrs := obj.Attributes()
+		tag, ok := attrs["tag"].(types.String)
+		if !ok || tag.IsNull() || tag.IsUnknown() {
+			elems = append(elems, e)
+			continue
+		}
+		if ss, ok := attrs["stream_settings"]; ok && !ss.IsNull() && !ss.IsUnknown() {
+			elems = append(elems, e)
+			continue
+		}
+		saved, ok := stateByTag[tag.ValueString()]
+		if !ok {
+			elems = append(elems, e)
+			continue
+		}
+		merged := make(map[string]attr.Value, len(attrs)+1)
+		for k, v := range attrs {
+			merged[k] = v
+		}
+		merged["stream_settings"] = saved
+		elems = append(elems, types.ObjectValueMust(obj.AttributeTypes(ctx), merged))
+		changed = true
+	}
+	if !changed {
+		return configured
+	}
+	return types.ListValueMust(configured.ElementType(ctx), elems)
 }
 
 // ---------------------------------------------------------------------------

@@ -22,6 +22,7 @@ type InboundStreamSettingsModel struct {
 	Security            types.String                        `tfsdk:"security"`
 	ExternalProxy       []InboundExternalProxyModel         `tfsdk:"external_proxy"`
 	RealitySettings     *InboundRealitySettingsModel        `tfsdk:"reality_settings"`
+	TLSSettings         *InboundTLSSettingsModel            `tfsdk:"tls_settings"`
 	TCPSettings         *InboundTCPSettingsModel            `tfsdk:"tcp_settings"`
 	WSSettings          *InboundWSSettingsModel             `tfsdk:"ws_settings"`
 	GRPCSettings        *InboundGRPCSettingsModel           `tfsdk:"grpc_settings"`
@@ -51,6 +52,16 @@ type InboundRealitySettingsModel struct {
 	ShortIDs     types.List   `tfsdk:"short_ids"` // list of string
 	Mldsa65Seed  types.String `tfsdk:"mldsa65_seed"`
 	Settings     types.Object `tfsdk:"settings"` // realityInnerSettingsAttrTypes
+}
+
+type InboundTLSSettingsModel struct {
+	ServerName    types.String `tfsdk:"server_name"`
+	Fingerprint   types.String `tfsdk:"fingerprint"`
+	AllowInsecure types.Bool   `tfsdk:"allow_insecure"`
+	Alpn          types.List   `tfsdk:"alpn"` // list of string
+	MinVersion    types.String `tfsdk:"min_version"`
+	MaxVersion    types.String `tfsdk:"max_version"`
+	Cipher        types.String `tfsdk:"cipher"`
 }
 
 // realityInnerSettingsAttrTypes defines the attribute types for the
@@ -297,6 +308,60 @@ func inboundStreamSettingsBlockSchema() schema.SingleNestedBlock {
 									stringplanmodifier.UseStateForUnknown(),
 								},
 							},
+						},
+					},
+				},
+			},
+			"tls_settings": schema.SingleNestedBlock{
+				Description: "TLS transport settings (requires security = 'tls').",
+				Attributes: map[string]schema.Attribute{
+					"server_name": schema.StringAttribute{
+						Optional: true, Computed: true,
+						Description: "SNI/server name for TLS (e.g. the domain the client should verify).",
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"fingerprint": schema.StringAttribute{
+						Optional: true, Computed: true,
+						Description: "TLS ClientHello fingerprint (e.g. 'chrome', 'firefox', 'random').",
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"allow_insecure": schema.BoolAttribute{
+						Optional: true, Computed: true,
+						Description: "Accept the server certificate only if verification succeeds; set true to permit an insecure connection.",
+						PlanModifiers: []planmodifier.Bool{
+							boolplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"alpn": schema.ListAttribute{
+						Optional: true, Computed: true,
+						ElementType: types.StringType,
+						Description: "ALPN protocols to offer (e.g. ['h2', 'http/1.1']).",
+						PlanModifiers: []planmodifier.List{
+							listplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"min_version": schema.StringAttribute{
+						Optional: true, Computed: true,
+						Description: "Minimum TLS version (e.g. '1.2').",
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"max_version": schema.StringAttribute{
+						Optional: true, Computed: true,
+						Description: "Maximum TLS version (e.g. '1.3').",
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"cipher": schema.StringAttribute{
+						Optional: true, Computed: true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
 						},
 					},
 				},
@@ -631,6 +696,11 @@ func expandStreamSettingsFromModel(m *InboundStreamSettingsModel) map[string]any
 			out["reality_settings"] = []any{rs}
 		}
 	}
+	if m.TLSSettings != nil {
+		if ts := expandTLSSettingsFromModel(m.TLSSettings); len(ts) > 0 {
+			out["tls_settings"] = []any{ts}
+		}
+	}
 	if m.TCPSettings != nil {
 		out["tcp_settings"] = []any{expandTCPSettingsFromModel(m.TCPSettings)}
 	}
@@ -721,6 +791,35 @@ func expandRealitySettingsFromModel(m *InboundRealitySettingsModel) map[string]a
 		if s := expandRealityInnerSettingsFromObject(m.Settings); len(s) > 0 {
 			out["settings"] = s
 		}
+	}
+	return out
+}
+
+func expandTLSSettingsFromModel(m *InboundTLSSettingsModel) map[string]any {
+	if m == nil {
+		return nil
+	}
+	out := map[string]any{}
+	if !m.ServerName.IsNull() && !m.ServerName.IsUnknown() {
+		out["server_name"] = m.ServerName.ValueString()
+	}
+	if !m.Fingerprint.IsNull() && !m.Fingerprint.IsUnknown() {
+		out["fingerprint"] = m.Fingerprint.ValueString()
+	}
+	if !m.AllowInsecure.IsNull() && !m.AllowInsecure.IsUnknown() {
+		out["allow_insecure"] = m.AllowInsecure.ValueBool()
+	}
+	if !m.Alpn.IsNull() && !m.Alpn.IsUnknown() {
+		out["alpn"] = typesListToAnySlice(m.Alpn)
+	}
+	if !m.MinVersion.IsNull() && !m.MinVersion.IsUnknown() {
+		out["min_version"] = m.MinVersion.ValueString()
+	}
+	if !m.MaxVersion.IsNull() && !m.MaxVersion.IsUnknown() {
+		out["max_version"] = m.MaxVersion.ValueString()
+	}
+	if !m.Cipher.IsNull() && !m.Cipher.IsUnknown() {
+		out["cipher"] = m.Cipher.ValueString()
 	}
 	return out
 }
@@ -957,6 +1056,12 @@ func flattenStreamSettingsToModel(data map[string]any) *InboundStreamSettingsMod
 		}
 	}
 
+	if v, ok := data["tls_settings"].([]any); ok && len(v) > 0 {
+		if raw, ok := v[0].(map[string]any); ok {
+			m.TLSSettings = flattenTLSSettingsToModel(raw)
+		}
+	}
+
 	if v, ok := data["tcp_settings"].([]any); ok && len(v) > 0 {
 		if raw, ok := v[0].(map[string]any); ok {
 			m.TCPSettings = flattenTCPSettingsToModel(raw)
@@ -1097,6 +1202,46 @@ func flattenRealitySettingsToModel(data map[string]any) *InboundRealitySettingsM
 		m.Settings = flattenRealityInnerSettingsToObject(v)
 	} else {
 		m.Settings = types.ObjectNull(realityInnerSettingsAttrTypes)
+	}
+	return m
+}
+
+func flattenTLSSettingsToModel(data map[string]any) *InboundTLSSettingsModel {
+	m := &InboundTLSSettingsModel{}
+	if v, ok := data["server_name"].(string); ok && v != "" {
+		m.ServerName = types.StringValue(v)
+	} else {
+		m.ServerName = types.StringNull()
+	}
+	if v, ok := data["fingerprint"].(string); ok && v != "" {
+		m.Fingerprint = types.StringValue(v)
+	} else {
+		m.Fingerprint = types.StringNull()
+	}
+	if v, ok := data["allow_insecure"].(bool); ok {
+		m.AllowInsecure = types.BoolValue(v)
+	} else {
+		m.AllowInsecure = types.BoolNull()
+	}
+	if v, ok := data["alpn"]; ok {
+		m.Alpn = anySliceToTypesList(v)
+	} else {
+		m.Alpn = types.ListNull(types.StringType)
+	}
+	if v, ok := data["min_version"].(string); ok && v != "" {
+		m.MinVersion = types.StringValue(v)
+	} else {
+		m.MinVersion = types.StringNull()
+	}
+	if v, ok := data["max_version"].(string); ok && v != "" {
+		m.MaxVersion = types.StringValue(v)
+	} else {
+		m.MaxVersion = types.StringNull()
+	}
+	if v, ok := data["cipher"].(string); ok && v != "" {
+		m.Cipher = types.StringValue(v)
+	} else {
+		m.Cipher = types.StringNull()
 	}
 	return m
 }

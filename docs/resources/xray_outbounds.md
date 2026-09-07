@@ -78,6 +78,89 @@ resource "threexui_xray_outbounds" "config" {
 - `xudp_concurrency` (Int, Optional) - XUDP concurrency.
 - `xudp_proxy_udp443` (String, Optional) - XUDP proxy for UDP 443.
 
+#### stream_settings (Block, Optional, Max: 1)
+
+Transport settings for the outbound — the outgoing counterpart of an inbound's
+`stream_settings`. Any protocol may carry one; vless/trojan outbounds typically
+need it (with `security = "tls"` + `tls_settings`) to reach a TLS-protected
+server. An omitted block is persisted from state on unrelated updates, and is
+**not** written to the outbounds configuration when absent.
+
+- `network` (String, Optional) - Transport network (`tcp`, `ws`, `grpc`, `httpupgrade`, `xhttp`, `kcp`, `hysteria`).
+- `security` (String, Optional) - Security type (`none`, `tls`, `reality`).
+- `tcp_settings` (Block, Optional, Max: 1) - TCP transport settings.
+  - `accept_proxy_protocol` (Bool, Optional)
+  - `header_type` (String, Optional)
+- `ws_settings` (Block, Optional, Max: 1) - WebSocket settings.
+  - `path` (String, Optional)
+  - `headers` (Map of String, Optional)
+- `grpc_settings` (Block, Optional, Max: 1) - gRPC settings.
+  - `service_name` (String, Optional)
+  - `multi_mode` (Bool, Optional)
+  - `idle_timeout` (Int, Optional)
+  - `health_check_timeout` (Int, Optional)
+  - `permit_without_stream` (Bool, Optional)
+  - `initial_windows_size` (Int, Optional)
+- `httpupgrade_settings` (Block, Optional, Max: 1) - HTTP Upgrade settings.
+  - `path` (String, Optional)
+  - `host` (String, Optional)
+- `xhttp_settings` (Block, Optional, Max: 1) - XHTTP settings.
+  - `path` (String, Optional)
+  - `mode` (String, Optional)
+  - `no_sse_header` (Bool, Optional)
+  - `keep_alive_interval` (Int, Optional)
+  - `x_padding_bytes` (String, Optional) - xPadding bytes range (e.g. `100-1000`).
+  - `x_padding_obfs_mode` (Bool, Optional)
+  - `x_padding_key` (String, Optional)
+  - `x_padding_header` (String, Optional)
+  - `x_padding_placement` (String, Optional) - xPadding placement (e.g. `header`, `body`).
+  - `x_padding_method` (String, Optional)
+- `kcp_settings` (Block, Optional, Max: 1) - mKCP settings.
+  - `mtu` (Int, Optional)
+  - `tti` (Int, Optional)
+  - `uplink_capacity` (Int, Optional)
+  - `downlink_capacity` (Int, Optional)
+  - `cwnd_multiplier` (Int, Optional)
+  - `max_sending_window` (Int, Optional)
+  - `header_type` (String, Optional)
+- `hysteria_settings` (Block, Optional, Max: 1) - Hysteria transport settings.
+  - `protocol` (String, Optional)
+  - `version` (Int, Optional)
+  - `auth` (String, Optional)
+  - `udp_idle_timeout` (Int, Optional)
+- `reality_settings` (Block, Optional, Max: 1) - Reality settings.
+  - `show` (Bool, Optional)
+  - `xver` (Int, Optional)
+  - `target` (String, Optional)
+  - `server_names` (List of String, Optional)
+  - `private_key` (String, Optional, Sensitive)
+  - `min_client_ver` (String, Optional)
+  - `max_client_ver` (String, Optional)
+  - `max_timediff` (Int, Optional)
+  - `short_ids` (List of String, Optional, Sensitive)
+  - `mldsa65_seed` (String, Optional, Sensitive)
+  - `settings` (Attribute, Optional) - Reality inner settings (client-side).
+    - `public_key` (String, Optional)
+    - `fingerprint` (String, Optional)
+    - `server_name` (String, Optional)
+    - `spider_x` (String, Optional)
+    - `mldsa65_verify` (String, Optional)
+- `tls_settings` (Block, Optional, Max: 1) - TLS client settings (used when `security = "tls"`).
+  - `server_name` (String, Optional) - Server name (SNI) for the TLS handshake.
+  - `fingerprint` (String, Optional) - Client fingerprint (e.g. `chrome`, `firefox`).
+  - `allow_insecure` (Bool, Optional) - Whether to allow insecure TLS connections.
+  - `alpn` (List of String, Optional) - ALPN list (e.g. `["h2", "http/1.1"]`).
+  - `min_version` (String, Optional) - Minimum TLS version (e.g. `1.2`).
+  - `max_version` (String, Optional) - Maximum TLS version (e.g. `1.3`).
+  - `cipher` (String, Optional) - TLS cipher suite.
+- `sockopt` (Block, Optional, Max: 1) - Socket options.
+  - `mark` (Int, Optional)
+  - `tcp_keep_alive_interval` (Int, Optional)
+  - `tcp_no_delay` (Bool, Optional)
+  - `tfo_enable` (Bool, Optional)
+  - `tproxy` (String, Optional)
+  - `domain_strategy` (String, Optional)
+
 ### Per-protocol settings
 
 Each outbound should have exactly one `*_settings` block matching its `protocol`.

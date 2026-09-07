@@ -3,6 +3,7 @@ package provider
 import (
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -161,5 +162,107 @@ func TestRealityMaxTimediff_NoPlatformNarrowing(t *testing.T) {
 	m := flattenRealitySettingsToModel(flattenRealitySettings(wire))
 	if got := m.MaxTimediff.ValueInt64(); got != beyond32Bit {
 		t.Fatalf("maxTimediff narrowed on read: want %d, got %d", beyond32Bit, got)
+	}
+}
+
+// --- TLS ---
+
+func TestExpandTLSSettingsFromModel_Full(t *testing.T) {
+	alpn, _ := types.ListValue(types.StringType, []attr.Value{
+		types.StringValue("h2"),
+		types.StringValue("http/1.1"),
+	})
+	m := &InboundTLSSettingsModel{
+		ServerName:    types.StringValue("gcp.example.com"),
+		Fingerprint:   types.StringValue("chrome"),
+		AllowInsecure: types.BoolValue(false),
+		Alpn:          alpn,
+		MinVersion:    types.StringValue("1.2"),
+		MaxVersion:    types.StringValue("1.3"),
+		Cipher:        types.StringValue("AES128-GCM-SHA256"),
+	}
+	out := expandTLSSettingsFromModel(m)
+	if out["server_name"] != "gcp.example.com" {
+		t.Fatalf("server_name: %v", out["server_name"])
+	}
+	if out["fingerprint"] != "chrome" {
+		t.Fatalf("fingerprint: %v", out["fingerprint"])
+	}
+	if out["allow_insecure"] != false {
+		t.Fatalf("allow_insecure: %v", out["allow_insecure"])
+	}
+	got, ok := out["alpn"].([]any)
+	if !ok || len(got) != 2 || got[0] != "h2" || got[1] != "http/1.1" {
+		t.Fatalf("alpn: %#v", out["alpn"])
+	}
+}
+
+func TestExpandTLSSettingsFromModel_Empty(t *testing.T) {
+	if out := expandTLSSettingsFromModel(nil); out != nil {
+		t.Fatalf("expected nil for nil model, got %v", out)
+	}
+	if out := expandTLSSettingsFromModel(&InboundTLSSettingsModel{}); len(out) != 0 {
+		t.Fatalf("expected empty map for null model, got %v", out)
+	}
+}
+
+func TestFlattenTLSSettingsToModel_Full(t *testing.T) {
+	m := flattenTLSSettingsToModel(map[string]any{
+		"server_name":    "gcp.example.com",
+		"fingerprint":    "chrome",
+		"allow_insecure": false,
+		"alpn":           []any{"h2", "http/1.1"},
+		"min_version":    "1.2",
+		"max_version":    "1.3",
+		"cipher":         "AES128-GCM-SHA256",
+	})
+	if m.ServerName.ValueString() != "gcp.example.com" {
+		t.Fatalf("ServerName: %v", m.ServerName)
+	}
+	if m.AllowInsecure.IsNull() || m.AllowInsecure.ValueBool() {
+		t.Fatalf("AllowInsecure: %v", m.AllowInsecure)
+	}
+	if m.Alpn.IsNull() || len(m.Alpn.Elements()) != 2 {
+		t.Fatalf("Alpn: %v", m.Alpn)
+	}
+	if m.MinVersion.ValueString() != "1.2" || m.MaxVersion.ValueString() != "1.3" {
+		t.Fatalf("versions: %v / %v", m.MinVersion, m.MaxVersion)
+	}
+}
+
+func TestFlattenTLSSettingsToModel_Absent(t *testing.T) {
+	m := flattenTLSSettingsToModel(map[string]any{})
+	if !m.ServerName.IsNull() || !m.AllowInsecure.IsNull() || !m.Alpn.IsNull() {
+		t.Fatalf("expected all-null on absent, got %#v", m)
+	}
+}
+
+// Inbound stream_settings model round-trip: a tls_settings block declared on an
+// inbound must survive model -> snake_case map -> snake_case map -> model.
+func TestInboundStreamSettings_TLSModelRoundTrip(t *testing.T) {
+	alpn, _ := types.ListValue(types.StringType, []attr.Value{
+		types.StringValue("h2"),
+		types.StringValue("http/1.1"),
+	})
+	in := &InboundStreamSettingsModel{
+		Network:  types.StringValue("tcp"),
+		Security: types.StringValue("tls"),
+		TLSSettings: &InboundTLSSettingsModel{
+			ServerName:    types.StringValue("gcp.example.com"),
+			Fingerprint:   types.StringValue("chrome"),
+			AllowInsecure: types.BoolValue(false),
+			Alpn:          alpn,
+		},
+	}
+	wire := expandStreamSettingsFromModel(in)
+	back := flattenStreamSettingsToModel(wire)
+	if back.TLSSettings == nil {
+		t.Fatal("expected TLSSettings to survive round-trip")
+	}
+	if back.TLSSettings.ServerName.ValueString() != "gcp.example.com" {
+		t.Fatalf("ServerName after round-trip: %v", back.TLSSettings.ServerName)
+	}
+	if back.TLSSettings.Fingerprint.ValueString() != "chrome" {
+		t.Fatalf("Fingerprint after round-trip: %v", back.TLSSettings.Fingerprint)
 	}
 }

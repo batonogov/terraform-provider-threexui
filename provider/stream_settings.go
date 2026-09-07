@@ -30,6 +30,13 @@ func buildStreamSettingsJSON(item map[string]any) string {
 			}
 		}
 	}
+	if v, ok := item["tls_settings"]; ok {
+		if list, ok := v.([]any); ok {
+			if ts := expandTLSSettings(list); ts != nil {
+				payload["tlsSettings"] = ts
+			}
+		}
+	}
 	if v, ok := item["tcp_settings"]; ok {
 		if list, ok := v.([]any); ok && len(list) > 0 {
 			payload["tcpSettings"] = expandTCPSettings(list)
@@ -103,6 +110,11 @@ func flattenStreamSettings(stream string) ([]any, error) {
 	if v, ok := payload["realitySettings"].(map[string]any); ok {
 		if rs := flattenRealitySettings(v); rs != nil {
 			out["reality_settings"] = []any{rs}
+		}
+	}
+	if v, ok := payload["tlsSettings"].(map[string]any); ok {
+		if ts := flattenTLSSettings(v); ts != nil {
+			out["tls_settings"] = []any{ts}
 		}
 	}
 	if v, ok := payload["tcpSettings"].(map[string]any); ok {
@@ -372,6 +384,77 @@ func flattenRealityInnerSettings(in map[string]any) map[string]any {
 	}
 	if v, ok := in["mldsa65Verify"].(string); ok {
 		out["mldsa65_verify"] = v
+	}
+	return out
+}
+
+// ---------------------------------------------------------------------------
+// TLS
+// ---------------------------------------------------------------------------
+
+func expandTLSSettings(list []any) map[string]any {
+	if len(list) == 0 {
+		return nil
+	}
+	item, ok := list[0].(map[string]any)
+	if !ok {
+		return nil
+	}
+	out := map[string]any{}
+	if v, ok := item["server_name"].(string); ok && v != "" {
+		out["serverName"] = v
+	}
+	if v, ok := item["fingerprint"].(string); ok && v != "" {
+		out["fingerprint"] = v
+	}
+	if v, ok := item["allow_insecure"]; ok {
+		out["allowInsecure"] = boolValue(v)
+	}
+	if v, ok := item["alpn"]; ok {
+		if list, ok := v.([]any); ok {
+			out["alpn"] = expandStringList(list)
+		}
+	}
+	if v, ok := item["min_version"].(string); ok && v != "" {
+		out["minVersion"] = v
+	}
+	if v, ok := item["max_version"].(string); ok && v != "" {
+		out["maxVersion"] = v
+	}
+	if v, ok := item["cipher"].(string); ok && v != "" {
+		out["cipher"] = v
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func flattenTLSSettings(in map[string]any) map[string]any {
+	if len(in) == 0 {
+		return nil
+	}
+	out := map[string]any{}
+	if v, ok := in["serverName"].(string); ok {
+		out["server_name"] = v
+	}
+	if v, ok := in["fingerprint"].(string); ok {
+		out["fingerprint"] = v
+	}
+	if v, ok := in["allowInsecure"].(bool); ok {
+		out["allow_insecure"] = v
+	}
+	if v, ok := in["alpn"].([]any); ok {
+		out["alpn"] = v
+	}
+	if v, ok := in["minVersion"].(string); ok {
+		out["min_version"] = v
+	}
+	if v, ok := in["maxVersion"].(string); ok {
+		out["max_version"] = v
+	}
+	if v, ok := in["cipher"].(string); ok {
+		out["cipher"] = v
 	}
 	return out
 }

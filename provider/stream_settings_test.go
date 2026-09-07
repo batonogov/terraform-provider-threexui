@@ -376,3 +376,132 @@ func TestFlattenStreamSettings_HysteriaEmptySettingsRetained(t *testing.T) {
 		})
 	}
 }
+
+// --- TLS ---
+
+func TestExpandTLSSettings_Empty(t *testing.T) {
+	if result := expandTLSSettings(nil); result != nil {
+		t.Fatalf("expected nil, got %v", result)
+	}
+	if result := expandTLSSettings([]any{}); result != nil {
+		t.Fatalf("expected nil for empty list, got %v", result)
+	}
+	// All-null block must not materialise an empty object on the wire.
+	if result := expandTLSSettings([]any{map[string]any{}}); result != nil {
+		t.Fatalf("expected nil for empty map, got %v", result)
+	}
+}
+
+func TestExpandTLSSettings_Full(t *testing.T) {
+	input := map[string]any{
+		"server_name":    "gcp.example.com",
+		"fingerprint":    "chrome",
+		"allow_insecure": false,
+		"alpn":           []any{"h2", "http/1.1"},
+		"min_version":    "1.2",
+		"max_version":    "1.3",
+		"cipher":         "AES128-GCM-SHA256",
+	}
+	result := expandTLSSettings([]any{input})
+	if result == nil {
+		t.Fatal("expected non-nil")
+	}
+	if result["serverName"] != "gcp.example.com" {
+		t.Fatalf("unexpected serverName: %v", result["serverName"])
+	}
+	if result["allowInsecure"] != false {
+		t.Fatalf("unexpected allowInsecure: %v", result["allowInsecure"])
+	}
+	alpn, ok := result["alpn"].([]string)
+	if !ok || len(alpn) != 2 || alpn[0] != "h2" || alpn[1] != "http/1.1" {
+		t.Fatalf("unexpected alpn: %#v", result["alpn"])
+	}
+	if result["minVersion"] != "1.2" {
+		t.Fatalf("unexpected minVersion: %v", result["minVersion"])
+	}
+}
+
+func TestFlattenTLSSettings_Full(t *testing.T) {
+	in := map[string]any{
+		"serverName":    "gcp.example.com",
+		"fingerprint":   "chrome",
+		"allowInsecure": false,
+		"alpn":          []any{"h2", "http/1.1"},
+		"minVersion":    "1.2",
+		"maxVersion":    "1.3",
+		"cipher":        "AES128-GCM-SHA256",
+	}
+	out := flattenTLSSettings(in)
+	if out["server_name"] != "gcp.example.com" {
+		t.Fatalf("unexpected server_name: %v", out["server_name"])
+	}
+	if out["fingerprint"] != "chrome" {
+		t.Fatalf("unexpected fingerprint: %v", out["fingerprint"])
+	}
+	alpn, ok := out["alpn"].([]any)
+	if !ok || len(alpn) != 2 || alpn[0] != "h2" {
+		t.Fatalf("unexpected alpn: %#v", out["alpn"])
+	}
+	if out["allow_insecure"] != false {
+		t.Fatalf("unexpected allow_insecure: %v", out["allow_insecure"])
+	}
+}
+
+func TestFlattenTLSSettings_Empty(t *testing.T) {
+	if result := flattenTLSSettings(map[string]any{}); result != nil {
+		t.Fatalf("expected nil for empty map, got %v", result)
+	}
+}
+
+// Full three-layer TLS round-trip through buildStreamSettingsJSON /
+// flattenStreamSettings — the same path an inbound's stream_settings field takes.
+func TestTLSStreamSettings_JSONRoundTrip(t *testing.T) {
+	in := map[string]any{
+		"network":  "tcp",
+		"security": "tls",
+		"tls_settings": []any{
+			map[string]any{
+				"server_name":    "gcp.example.com",
+				"fingerprint":    "chrome",
+				"allow_insecure": false,
+				"alpn":           []any{"h2", "http/1.1"},
+			},
+		},
+	}
+	j := buildStreamSettingsJSON(in)
+	if j == "{}" {
+		t.Fatal("expected non-empty JSON")
+	}
+	out, err := flattenStreamSettings(j)
+	if err != nil {
+		t.Fatalf("flattenStreamSettings error: %v", err)
+	}
+	if len(out) != 1 {
+		t.Fatalf("expected 1 entry, got %d: %#v", len(out), out)
+	}
+	first := out[0].(map[string]any)
+	tls, ok := first["tls_settings"].([]any)
+	if !ok || len(tls) != 1 {
+		t.Fatalf("expected tls_settings present, got %#v", first)
+	}
+	ts, ok := tls[0].(map[string]any)
+	if !ok {
+		t.Fatalf("tls_settings[0] not a map: %#v", tls[0])
+	}
+	if ts["server_name"] != "gcp.example.com" {
+		t.Fatalf("unexpected server_name: %v", ts["server_name"])
+	}
+	if ts["fingerprint"] != "chrome" {
+		t.Fatalf("unexpected fingerprint: %v", ts["fingerprint"])
+	}
+}
+
+// Absence of tls_settings must not materialise a tlsSettings key on the wire.
+func TestTLSStreamSettings_Absent(t *testing.T) {
+	in := map[string]any{"network": "tcp", "security": "none"}
+	if j := buildStreamSettingsJSON(in); j == "{}" {
+		t.Fatal("expected network/security emitted")
+	} else if j != `{"network":"tcp","security":"none"}` {
+		t.Fatalf("unexpected JSON: %s", j)
+	}
+}

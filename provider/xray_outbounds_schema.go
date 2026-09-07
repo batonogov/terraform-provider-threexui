@@ -8,6 +8,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -29,6 +30,7 @@ type XrayOutboundEntry struct {
 	SendThrough         types.String                 `tfsdk:"send_through"`
 	TargetStrategy      types.String                 `tfsdk:"target_strategy"`
 	Mux                 []XrayOutboundMux            `tfsdk:"mux"`
+	StreamSettings      *InboundStreamSettingsModel  `tfsdk:"stream_settings"`
 	FreedomSettings     []XrayFreedomSettings        `tfsdk:"freedom_settings"`
 	BlackholeSettings   []XrayBlackholeSettings      `tfsdk:"blackhole_settings"`
 	DNSSettings         []XrayOutboundDNSSettings    `tfsdk:"dns_settings"`
@@ -249,6 +251,7 @@ func xrayOutboundsSchema() schema.Schema {
 					},
 					Blocks: map[string]schema.Block{
 						"mux":                  singletonListNestedBlock(muxBlock()),
+						"stream_settings":      outboundStreamSettingsBlock(),
 						"freedom_settings":     singletonListNestedBlock(freedomSettingsBlock()),
 						"blackhole_settings":   singletonListNestedBlock(blackholeSettingsBlock()),
 						"dns_settings":         singletonListNestedBlock(dnsSettingsBlock()),
@@ -265,6 +268,23 @@ func xrayOutboundsSchema() schema.Schema {
 			},
 		},
 	}
+}
+
+// outboundStreamSettingsBlock wraps the shared inbound stream-settings schema
+// for outbound use. Unlike inbounds, an outbound's streamSettings was previously
+// unmodeled and would be silently dropped on any outbound write (the whole
+// outbounds array is replaced via setJSONPath). Marking the object Optional +
+// Computed + UseStateForUnknown lets an omitted stream_settings survive an
+// unrelated outbound update by inheriting prior state. SingleNestedBlock has no
+// Optional/Computed/Required fields of its own; the flags are set on the
+// objectplanmodifier via the BlockWithObjectPlanModifiers interface, which
+// SingleNestedBlock implements.
+func outboundStreamSettingsBlock() schema.SingleNestedBlock {
+	block := inboundStreamSettingsBlockSchema()
+	block.PlanModifiers = []planmodifier.Object{
+		objectplanmodifier.UseStateForUnknown(),
+	}
+	return block
 }
 
 // muxBlock returns the mux schema block shared across all outbound types.
@@ -346,6 +366,13 @@ func expandXrayOutbounds(m *XrayOutboundsModel) map[string]any {
 		if len(ob.Mux) > 0 {
 			if result := expandOutboundMuxFromModel(ob.Mux); hasNonEmptyEntries(result) {
 				entry["mux"] = result
+			}
+		}
+
+		// Stream settings
+		if ob.StreamSettings != nil {
+			if result := expandStreamSettingsFromModel(ob.StreamSettings); len(result) > 0 {
+				entry["stream_settings"] = []any{result}
 			}
 		}
 
@@ -498,6 +525,13 @@ func flattenXrayOutbounds(data map[string]any) *XrayOutboundsModel {
 		// Mux
 		if v, ok := raw["mux"].([]any); ok && len(v) > 0 {
 			entry.Mux = flattenOutboundMuxToModel(v)
+		}
+
+		// Stream settings
+		if v, ok := raw["stream_settings"].([]any); ok && len(v) > 0 {
+			if rawSS, ok := v[0].(map[string]any); ok {
+				entry.StreamSettings = flattenStreamSettingsToModel(rawSS)
+			}
 		}
 
 		// Protocol-specific settings
@@ -694,6 +728,17 @@ func expandOutbounds(list []any) []any {
 			}
 		}
 
+		// Stream settings
+		if v, ok := m["stream_settings"]; ok {
+			if list, ok := v.([]any); ok && len(list) > 0 {
+				if ss, ok := list[0].(map[string]any); ok {
+					if obj := expandOutboundStreamSettings(ss); obj != nil {
+						entry["streamSettings"] = obj
+					}
+				}
+			}
+		}
+
 		// Protocol-specific settings
 		if settings := expandOutboundSettings(m, protocol); settings != nil {
 			entry["settings"] = settings
@@ -731,6 +776,28 @@ func expandOutboundMux(list []any) map[string]any {
 		return nil
 	}
 	return out
+}
+
+// expandOutboundStreamSettings converts the snake_case stream settings map into
+// the camelCase object that xray stores on an outbound, reusing the exact
+// encoding the inbound resources send as a JSON string. Returns nil when the
+// map carries nothing to emit.
+func expandOutboundStreamSettings(ss map[string]any) map[string]any {
+	if len(ss) == 0 {
+		return nil
+	}
+	j := buildStreamSettingsJSON(ss)
+	if j == "{}" {
+		return nil
+	}
+	var obj map[string]any
+	if err := json.Unmarshal([]byte(j), &obj); err != nil {
+		return nil
+	}
+	if len(obj) == 0 {
+		return nil
+	}
+	return obj
 }
 
 func expandOutboundSettings(m map[string]any, protocol string) map[string]any {
@@ -814,6 +881,15 @@ func flattenOutbounds(list []any) []any {
 		if v, ok := m["mux"].(map[string]any); ok {
 			if mux := flattenOutboundMux(v); mux != nil {
 				entry["mux"] = []any{mux}
+			}
+		}
+
+		// Stream settings
+		if v, ok := m["streamSettings"].(map[string]any); ok && len(v) > 0 {
+			if b, err := json.Marshal(v); err == nil {
+				if list, err := flattenStreamSettings(string(b)); err == nil && len(list) > 0 {
+					entry["stream_settings"] = list
+				}
 			}
 		}
 
