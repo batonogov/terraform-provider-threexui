@@ -111,5 +111,5 @@ func defaultSettingsForProtocol(protocol string) (map[string]any, error) { //nol
 // peers live in the inbound's own settings block; every other protocol's
 // clients are owned by threexui_inbound_client.
 func protocolOwnsClients(protocol string) bool {
-	return protocol == "wireguard" || protocol == "amneziawg"
+	return protocol == "wireguard" || protocol == "amneziawg" || protocol == "tuic"
 }

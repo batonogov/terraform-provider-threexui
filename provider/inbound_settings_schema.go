@@ -412,6 +412,7 @@ func inboundSettingsBlockSchemas() map[string]schema.Block {
 			},
 		},
 		"amneziawg_settings": amneziawgSettingsBlock(),
+		"tuic_settings":      tuicSettingsBlock(),
 		"dokodemo_settings": schema.SingleNestedBlock{
 			Description: "Settings for Dokodemo-door / tunnel protocol.",
 			Attributes: map[string]schema.Attribute{
@@ -675,6 +676,8 @@ func expandSettingsFromModel(protocol string, m *InboundResourceModel) map[strin
 		return expandWireguardInboundSettings(m.WireguardSettings)
 	case "amneziawg":
 		return expandAmneziawgInboundSettings(m.AmneziawgSettings)
+	case "tuic":
+		return expandTuicInboundSettings(m.TuicSettings)
 	case "dokodemo-door", "tunnel", "tun":
 		return expandDokodemoInboundSettings(protocol, m.DokodemoSettings)
 	case "hysteria", "hysteria2":
@@ -1067,6 +1070,8 @@ func flattenSettingsToModel(protocol string, data map[string]any, m *InboundReso
 		m.WireguardSettings = flattenWireguardInboundSettings(data)
 	case "amneziawg":
 		m.AmneziawgSettings = flattenAmneziawgInboundSettings(data)
+	case "tuic":
+		m.TuicSettings = flattenTuicInboundSettings(data)
 	case "dokodemo-door", "tunnel", "tun":
 		m.DokodemoSettings = flattenDokodemoInboundSettings(protocol, data)
 	case "hysteria", "hysteria2":

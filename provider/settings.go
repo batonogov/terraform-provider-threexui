@@ -143,7 +143,7 @@ func buildSettingsJSON(item map[string]any, protocol string) string {
 	// `threexui_inbound_client`. Forward `clients[]` ONLY for wireguard; for
 	// every other protocol it is deliberately stripped (managed by
 	// threexui_inbound_client, surfaced there, not here).
-	if protocol == "wireguard" || protocol == "amneziawg" {
+	if protocol == "wireguard" || protocol == "amneziawg" || protocol == "tuic" {
 		if v, ok := item["clients"]; ok {
 			if list, ok := v.([]any); ok && len(list) > 0 {
 				payload["clients"] = list
@@ -156,7 +156,7 @@ func buildSettingsJSON(item map[string]any, protocol string) string {
 	// emits camelCase keys for it. Forward the object verbatim: folding it into
 	// the flat key table above would collide on `mtu` (WireGuard), `privateKey`
 	// / `publicKey` and `routeThroughXray` (MTProto).
-	if protocol == "amneziawg" {
+	if protocol == "amneziawg" || protocol == "tuic" {
 		if v, ok := item["server"]; ok {
 			if server, ok := v.(map[string]any); ok && len(server) > 0 {
 				payload["server"] = server
@@ -318,14 +318,14 @@ func flattenSettings(settings string, protocol string) ([]any, error) {
 	// WireGuard multi-client: forward clients[] back ONLY for wireguard (see
 	// buildSettingsJSON). For vmess/vless/trojan/SS/hysteria the clients array is
 	// managed via threexui_inbound_client and must stay stripped here.
-	if protocol == "wireguard" || protocol == "amneziawg" {
+	if protocol == "wireguard" || protocol == "amneziawg" || protocol == "tuic" {
 		if v, ok := payload["clients"].([]any); ok && len(v) > 0 {
 			out["clients"] = v
 		}
 	}
 
 	// AmneziaWG server block — passed through verbatim, mirroring buildSettingsJSON.
-	if protocol == "amneziawg" {
+	if protocol == "amneziawg" || protocol == "tuic" {
 		if v, ok := payload["server"].(map[string]any); ok && len(v) > 0 {
 			out["server"] = v
 		}

@@ -632,9 +632,7 @@ func TestDriftInboundProtocols_GoModel(t *testing.T) {
 	}
 
 	upstreamSet := toSet(upstream)
-	// "tuic" (v3.8.0, TUIC v5) is terminated by a bundled tuic-server sidecar
-	// rather than xray-core; provider support is tracked separately.
-	upstreamSkipped := map[string]bool{"tuic": true}
+	upstreamSkipped := map[string]bool{}
 	checkMissing(t, upstream, providerHandled, upstreamSkipped,
 		"upstream model.go has protocols not handled by provider: %v")
 	checkRemoved(t, providerHandled, upstreamSet, providerExtras,
@@ -672,8 +670,7 @@ func TestDriftInboundProtocols_JS(t *testing.T) {
 	}
 
 	upstreamSet := toSet(upstream)
-	// "tuic" (v3.8.0, TUIC v5 sidecar) — see TestDriftInboundProtocols_GoModel.
-	upstreamSkipped := map[string]bool{"tuic": true}
+	upstreamSkipped := map[string]bool{}
 	checkMissing(t, upstream, providerHandled, upstreamSkipped,
 		"upstream inbound.js Protocols has entries not handled by provider: %v")
 	checkRemoved(t, providerHandled, upstreamSet, providerExtras,
@@ -711,8 +708,7 @@ func TestDriftProtocolForms(t *testing.T) {
 	}
 
 	upstreamSet := toSet(upstream)
-	// "tuic" (v3.8.0, TUIC v5 sidecar) — see TestDriftInboundProtocols_GoModel.
-	upstreamSkipped := map[string]bool{"tuic": true}
+	upstreamSkipped := map[string]bool{}
 	checkMissing(t, upstream, providerBlocks, upstreamSkipped,
 		"upstream protocol form files not handled by provider: %v")
 	checkRemoved(t, providerBlocks, upstreamSet, providerExtras,

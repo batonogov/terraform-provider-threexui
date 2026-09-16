@@ -35,6 +35,12 @@ func TestDocumentedSchemaSections(t *testing.T) {
 	amneziawg := requireSingleNestedBlock(t, inbound["amneziawg_settings"])
 	assertDocumentedBlock(t, "docs/resources/inbound.md", "##### `server`", amneziawg.Blocks["server"])
 	assertDocumentedBlock(t, "docs/resources/inbound.md", "##### `clients`", amneziawg.Blocks["clients"])
+
+	assertDocumentedBlock(t, "docs/resources/inbound.md", "#### `tuic_settings`", inbound["tuic_settings"])
+	// The nested `server`/`clients` headings deliberately reuse the
+	// AmneziaWG spelling and documentedFields matches the FIRST heading, so
+	// only the parent block is guarded here; the field lists above carry the
+	// per-attribute documentation.
 }
 
 func TestInboundProtocolDescriptionListsVersionedProtocols(t *testing.T) {

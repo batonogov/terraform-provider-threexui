@@ -1553,9 +1553,16 @@ resource "threexui_inbound" "reset_day" {
 // that works across CI environments (no files on the panel host).
 func testAccSelfSignedCertPEM(t *testing.T) (string, string) {
 	t.Helper()
+	certPEM, keyPEM := mustSelfSignedCertPEM()
+	return certPEM, keyPEM
+}
+
+// mustSelfSignedCertPEM is the testing.T-free variant used by matrix entry
+// constructors, whose HCL builders take no *testing.T.
+func mustSelfSignedCertPEM() (string, string) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		t.Fatalf("GenerateKey: %v", err)
+		panic(err)
 	}
 	tmpl := &x509.Certificate{
 		SerialNumber: big.NewInt(1),
@@ -1565,11 +1572,11 @@ func testAccSelfSignedCertPEM(t *testing.T) (string, string) {
 	}
 	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
 	if err != nil {
-		t.Fatalf("CreateCertificate: %v", err)
+		panic(err)
 	}
 	keyDER, err := x509.MarshalECPrivateKey(key)
 	if err != nil {
-		t.Fatalf("MarshalECPrivateKey: %v", err)
+		panic(err)
 	}
 	certPEM := string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))
 	keyPEM := string(pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER}))

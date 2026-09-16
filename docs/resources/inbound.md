@@ -7,7 +7,7 @@ description: |-
 
 # threexui_inbound (Resource)
 
-Manages an inbound proxy in the 3x-ui panel. Supports protocols: vless, vmess, trojan, shadowsocks, http, mixed, wireguard, amneziawg, tunnel, tun, hysteria, and mtproto. For older panels, the provider also preserves legacy `socks`, `dokodemo-door`, and `hysteria2` values from imported state; on 3x-ui v3.2.0+ use `mixed`, `tunnel`, and `hysteria` with `version = 2` for new configurations. TUN requires v3.2.7+, MTProto requires v3.3.0+, and AmneziaWG requires v3.7.0+.
+Manages an inbound proxy in the 3x-ui panel. Supports protocols: vless, vmess, trojan, shadowsocks, http, mixed, wireguard, amneziawg, tunnel, tun, hysteria, mtproto, and tuic. For older panels, the provider also preserves legacy `socks`, `dokodemo-door`, and `hysteria2` values from imported state; on 3x-ui v3.2.0+ use `mixed`, `tunnel`, and `hysteria` with `version = 2` for new configurations. TUN requires v3.2.7+, MTProto requires v3.3.0+, AmneziaWG requires v3.7.0+, and TUIC requires v3.8.0+.
 
 ## Example Usage
 
@@ -212,7 +212,7 @@ resource "threexui_inbound" "mtproto" {
 ### Top-level
 
 - `port` (Required, Number) - Port number for the inbound.
-- `protocol` (Required, String) - Protocol type (`vless`, `vmess`, `trojan`, `shadowsocks`, `http`, `mixed`, `wireguard`, `amneziawg`, `tunnel`, `tun`, `hysteria`, `mtproto`). Legacy `socks` and `dokodemo-door` are available only on panels before 3x-ui v3.2.0; use `mixed` and `tunnel` on v3.2.0+. `tun` is a tunnel alias available on v3.2.7+, `mtproto` is available on v3.3.0+, and `amneziawg` on v3.7.0+.
+- `protocol` (Required, String) - Protocol type (`vless`, `vmess`, `trojan`, `shadowsocks`, `http`, `mixed`, `wireguard`, `amneziawg`, `tunnel`, `tun`, `hysteria`, `mtproto`). Legacy `socks` and `dokodemo-door` are available only on panels before 3x-ui v3.2.0; use `mixed` and `tunnel` on v3.2.0+. `tun` is a tunnel alias available on v3.2.7+, `mtproto` is available on v3.3.0+, `amneziawg` on v3.7.0+, and `tuic` on v3.8.0+.
 - `enable` (Optional, Boolean) - Whether the inbound is enabled. Default is `true`.
 - `remark` (Optional, String) - A label/name for the inbound.
 - `listen` (Optional, String) - Listen address.
@@ -426,6 +426,45 @@ Typed MTProto server settings available on 3x-ui v3.3.0+. On v3.5.0+, per-client
 - `ip` (Optional+Computed, String) - Fronting IP address.
 - `port` (Optional+Computed, Number) - Fronting port.
 - `proxy_protocol` (Optional+Computed, Boolean) - Enable PROXY protocol for this listener.
+
+#### `tuic_settings` (Optional, Block)
+
+Typed TUIC v5 settings, available on 3x-ui v3.8.0+. TUIC is terminated by a bundled `tuic-server` sidecar (not xray-core) which relays into Xray, so per-client stats, routing and quotas work like any other protocol. Users live in this block — the same rule as `wireguard_settings.clients` and `amneziawg_settings.clients`, not `threexui_inbound_client`.
+
+- `server` (Optional, Block) - TUIC server parameters.
+- `clients` (Optional, Block List) - Users this server accepts. `id` (uuid) and `password` are **required**: the panel refuses a keyless or passwordless peer on every save and derives credentials only on the `/panel/api/clients` endpoints, which do not own these users.
+
+##### `server` (Optional, Block)
+
+Unlike AmneziaWG, the panel generates nothing here: the `certificate` / `private_key` inline PEM pair is operator-supplied (a save without them succeeds, but the sidecar instance will not come up), and every other field falls back to the panel's read-time defaults when omitted (`bbr`, `native`, `info`, 15, 3, 1500, `["h3", "spdy/3.1"]`).
+
+- `certificate` (Optional, String) - Server certificate (inline PEM).
+- `private_key` (Optional, String, Sensitive) - Server private key (inline PEM). An empty string is rejected — omit the attribute instead.
+- `congestion_control` (Optional, String) - `bbr`, `cubic`, or `new_reno`.
+- `alpn` (Optional, List of String) - ALPN protocols.
+- `udp_relay_mode` (Optional, String) - `native` or `quic`.
+- `zero_rtt_handshake` (Optional, Boolean) - Enable 0-RTT handshake.
+- `log_level` (Optional, String) - `info`, `warn`, `error`, or `debug`.
+- `max_idle_time` (Optional, Number) - Max idle time in seconds.
+- `authentication_timeout` (Optional, Number) - Authentication timeout in seconds.
+- `max_udp_relay_packet_size` (Optional, Number) - Max UDP relay packet size in bytes.
+- `sni` (Optional, String) - Server name indication override.
+
+##### `clients` (Optional, Block List)
+
+- `email` (Required, String) - User email; keys the traffic counters (unique per panel).
+- `id` (Required, String) - User UUID. The panel accepts either `uuid` or `id` spelling on read; the provider always writes `id`.
+- `password` (Required, String, Sensitive) - User password.
+- `enable` (Optional, Boolean) - Enable the user.
+- `limit_ip` (Optional, Number) - IP limit (0 = unlimited).
+- `total_gb` (Optional, Number) - Traffic quota in bytes (0 = unlimited).
+- `expiry_time` (Optional, Number) - Expiry as a unix timestamp (0 = never).
+- `tg_id` (Optional, Number) - Telegram ID.
+- `sub_id` (Optional, String) - Subscription ID.
+- `comment` (Optional, String) - Free-form comment.
+- `reset` (Optional, Number) - Traffic reset cycle in days (0 = none).
+- `reset_day` / `reset_max` / `traffic_reset` / `traffic_reset_day` (Optional) - Renewal and reset-cycle bookkeeping, modelled so an unrelated apply does not zero them (the inbound rewrites `clients[]` wholesale).
+- `created_at` / `updated_at` (Optional, Number) - Panel-managed row timestamps.
 
 ### `stream_settings` Block
 

@@ -64,6 +64,7 @@ func protocolMatrix() []protocolMatrixEntry {
 		matrixMixed(),
 		matrixWireguard(),
 		matrixAmneziawg(),
+		matrixTuic(),
 		matrixDokodemo(),
 		matrixHysteria(),
 	}
@@ -952,5 +953,69 @@ func nonZeroAttr(name string) func(string) error {
 			return fmt.Errorf("%s is %q: AmneziaWG obfuscation is disabled, the inbound is plain WireGuard", name, v)
 		}
 		return nil
+	}
+}
+
+// matrixTuic covers TUIC v5 (3x-ui v3.8.0+), terminated by the bundled
+// tuic-server sidecar rather than xray-core. The certificate/private_key
+// inline PEM pair is operator-supplied (the panel generates nothing), so the
+// entry uses a throwaway self-signed certificate. The update step changes
+// congestion_control and the client comment; peers belong to the inbound
+// (protocolOwnsClients) and require id+password+email on every save.
+func matrixTuic() protocolMatrixEntry {
+	certHCL := func(port int, remark, congestionControl, comment string) string {
+		certPEM, keyPEM := mustSelfSignedCertPEM()
+		return fmt.Sprintf(`
+resource "threexui_inbound" "mx_tuic" {
+  port     = %d
+  protocol = "tuic"
+  remark   = %q
+  enable   = true
+
+  tuic_settings {
+    server {
+      certificate         = %q
+      private_key         = %q
+      congestion_control  = %q
+      udp_relay_mode      = "native"
+      max_idle_time       = 15
+    }
+    clients {
+      email    = "matrix-tuic-user@test.com"
+      id       = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+      password = "matrix-tuic-pass"
+      comment  = %q
+    }
+  }
+}
+`, port, remark, certPEM, keyPEM, congestionControl, comment)
+	}
+	return protocolMatrixEntry{
+		protocol:   "tuic",
+		tfName:     "mx_tuic",
+		port:       26012,
+		minVersion: "v3.8.0",
+		createHCL: func(port int) string {
+			return certHCL(port, "matrix-tuic-create", "bbr", "matrix")
+		},
+		updateHCL: func(port int) string {
+			return certHCL(port, "matrix-tuic-updated", "cubic", "matrix-2")
+		},
+		createChecks: func(addr string) []resource.TestCheckFunc {
+			return []resource.TestCheckFunc{
+				resource.TestCheckResourceAttr(addr, "remark", "matrix-tuic-create"),
+				resource.TestCheckResourceAttr(addr, "tuic_settings.server.congestion_control", "bbr"),
+				resource.TestCheckResourceAttr(addr, "tuic_settings.server.max_idle_time", "15"),
+				resource.TestCheckResourceAttr(addr, "tuic_settings.clients.0.email", "matrix-tuic-user@test.com"),
+				resource.TestCheckResourceAttr(addr, "tuic_settings.clients.0.comment", "matrix"),
+			}
+		},
+		updateChecks: func(addr string) []resource.TestCheckFunc {
+			return []resource.TestCheckFunc{
+				resource.TestCheckResourceAttr(addr, "remark", "matrix-tuic-updated"),
+				resource.TestCheckResourceAttr(addr, "tuic_settings.server.congestion_control", "cubic"),
+				resource.TestCheckResourceAttr(addr, "tuic_settings.clients.0.comment", "matrix-2"),
+			}
+		},
 	}
 }
