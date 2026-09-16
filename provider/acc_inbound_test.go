@@ -1,9 +1,17 @@
 package provider
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
+	"math/big"
 	"regexp"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
@@ -1531,6 +1539,115 @@ resource "threexui_inbound" "reset_day" {
 }
 `,
 				Check: resource.TestCheckResourceAttr("threexui_inbound.reset_day", "traffic_reset_day", "28"),
+			},
+		},
+	})
+}
+
+// --- TLS inbound with certificates (tls_settings.certificates) ---
+
+// testAccSelfSignedCertPEM generates a throwaway ECDSA self-signed
+// certificate and returns (certPEM, keyPEM). Used by TLS inbound acc tests:
+// 3x-ui v3.8.0+ refuses to save a security="tls" inbound without server
+// certificate material (upstream #6429), so inline PEM is the only variant
+// that works across CI environments (no files on the panel host).
+func testAccSelfSignedCertPEM(t *testing.T) (string, string) {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("GenerateKey: %v", err)
+	}
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		DNSNames:     []string{"acc-tls.example.com"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(24 * time.Hour),
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatalf("CreateCertificate: %v", err)
+	}
+	keyDER, err := x509.MarshalECPrivateKey(key)
+	if err != nil {
+		t.Fatalf("MarshalECPrivateKey: %v", err)
+	}
+	certPEM := string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))
+	keyPEM := string(pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER}))
+	return certPEM, keyPEM
+}
+
+// hclStringList renders a Go string slice as an HCL list-of-strings literal.
+func hclStringList(items []string) string {
+	quoted := make([]string, 0, len(items))
+	for _, s := range items {
+		quoted = append(quoted, fmt.Sprintf("%q", s))
+	}
+	return "[" + strings.Join(quoted, ", ") + "]"
+}
+
+func testAccInboundTLSCertificatesConfig(serverName string, certPEM, keyPEM string) string {
+	return fmt.Sprintf(`
+resource "threexui_inbound" "tls_certs" {
+  port     = 25521
+  protocol = "vless"
+  remark   = "acc-tls-certificates"
+  enable   = true
+
+  stream_settings {
+    network  = "tcp"
+    security = "tls"
+
+    tls_settings {
+      server_name = %q
+
+      certificates = [{
+        certificate = %s
+        key         = %s
+        usage       = "encipherment"
+      }]
+    }
+  }
+}
+`, serverName, hclStringList(strings.Split(strings.TrimSpace(certPEM), "\n")), hclStringList(strings.Split(strings.TrimSpace(keyPEM), "\n")))
+}
+
+// TestAccInboundTLSCertificates proves the provider can create, re-read and
+// update a TLS-secured inbound with inline server certificate material —
+// the surface 3x-ui v3.8.0+ requires (it refuses TLS inbounds without a
+// server cert+key) and the provider previously dropped silently because
+// tlsSettings.certificates was unmodeled.
+func TestAccInboundTLSCertificates(t *testing.T) {
+	certPEM, keyPEM := testAccSelfSignedCertPEM(t)
+	certLines := strings.Split(strings.TrimSpace(certPEM), "\n")
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories(),
+		CheckDestroy:             testAccCheckInboundDestroyed,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccProviderConfig() + testAccInboundTLSCertificatesConfig("acc-tls.example.com", certPEM, keyPEM),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("threexui_inbound.tls_certs", "protocol", "vless"),
+					resource.TestCheckResourceAttr("threexui_inbound.tls_certs", "stream_settings.tls_settings.certificates.0.certificate.0", certLines[0]),
+					resource.TestCheckResourceAttr("threexui_inbound.tls_certs", "stream_settings.tls_settings.certificates.0.usage", "encipherment"),
+					resource.TestCheckResourceAttr("threexui_inbound.tls_certs", "stream_settings.tls_settings.server_name", "acc-tls.example.com"),
+				),
+			},
+			// Idempotency: the panel stores streamSettings verbatim, so the
+			// certificate/key must read back identically — no drift.
+			{
+				Config:   testAccProviderConfig() + testAccInboundTLSCertificatesConfig("acc-tls.example.com", certPEM, keyPEM),
+				PlanOnly: true,
+			},
+			// Update the SNI while keeping the certificate: an unrelated edit
+			// must not drop or mangle the stored entries.
+			{
+				Config: testAccProviderConfig() + testAccInboundTLSCertificatesConfig("renamed.example.com", certPEM, keyPEM),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("threexui_inbound.tls_certs", "stream_settings.tls_settings.server_name", "renamed.example.com"),
+					resource.TestCheckResourceAttr("threexui_inbound.tls_certs", "stream_settings.tls_settings.certificates.0.certificate.0", certLines[0]),
+				),
 			},
 		},
 	})

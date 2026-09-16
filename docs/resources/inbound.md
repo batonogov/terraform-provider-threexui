@@ -497,7 +497,7 @@ Typed MTProto server settings available on 3x-ui v3.3.0+. On v3.5.0+, per-client
   > `min_client_ver = "0.0.0"` for no lower bound, `max_client_ver = "255.255.255"`
   > for no upper bound, `max_timediff = 0` for no time check.
 
-- `tls_settings` (Optional, Block) - TLS client settings (used when `security = "tls"`).
+- `tls_settings` (Optional, Block) - TLS settings (used when `security = "tls"`).
   - `server_name` (Optional, String) - Server name (SNI) for the TLS handshake.
   - `fingerprint` (Optional, String) - Client fingerprint (e.g. `chrome`, `firefox`).
   - `allow_insecure` (Optional, Boolean) - Whether to allow insecure TLS connections.
@@ -505,6 +505,17 @@ Typed MTProto server settings available on 3x-ui v3.3.0+. On v3.5.0+, per-client
   - `min_version` (Optional, String) - Minimum TLS version (e.g. `1.2`).
   - `max_version` (Optional, String) - Maximum TLS version (e.g. `1.3`).
   - `cipher` (Optional, String) - TLS cipher suite.
+  - `certificates` (Optional) - Server certificate entries. 3x-ui v3.8.0+ refuses to save a TLS-secured inbound without a server certificate and private key ([3x-ui #6429](https://github.com/MHSanaei/3x-ui/pull/6429)) — provide at least one `encipherment` entry. Omitting `certificates` keeps the existing entries (`Optional + Computed`); set `certificates = []` explicitly to clear them.
+    - `certificate_file` (Optional, String) - Path to the certificate file on the panel host. Mutually exclusive with `certificate`.
+    - `key_file` (Optional, String) - Path to the private key file on the panel host. Optional only for `usage = "verify"` entries.
+    - `certificate` (Optional, List of String) - Inline certificate PEM, one line per element.
+    - `key` (Optional, List of String, Sensitive) - Inline private key PEM, one line per element.
+    - `ocsp_stapling` (Optional, Number) - OCSP stapling preference.
+    - `one_time_loading` (Optional, Boolean) - Load the certificate into memory once.
+    - `build_chain` (Optional, Boolean) - Build the certificate chain.
+    - `usage` (Optional, String) - `encipherment`, `verify`, or `issue`.
+
+  ~> **Note** `certificates` is a nested *attribute*, not a block — use the assignment syntax: `certificates = [{ certificate = [...], key = [...] }]`.
 
 - `external_proxy` (Optional, Block List) - External proxy entries.
   - `dest` (Optional, String)

@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -265,4 +266,179 @@ func TestInboundStreamSettings_TLSModelRoundTrip(t *testing.T) {
 	if back.TLSSettings.Fingerprint.ValueString() != "chrome" {
 		t.Fatalf("Fingerprint after round-trip: %v", back.TLSSettings.Fingerprint)
 	}
+}
+
+// --- tls_settings.certificates (3x-ui v3.8.0+ TLS validation) ---
+
+func TestExpandTLSSettingsFromModel_Certificates(t *testing.T) {
+	m := &InboundTLSSettingsModel{
+		ServerName: types.StringValue("tls.example.com"),
+		Certificates: []InboundTLSCertModel{
+			{
+				// File-backed server certificate.
+				CertificateFile: types.StringValue("/etc/certs/server.pem"),
+				KeyFile:         types.StringValue("/etc/certs/server.key"),
+				OcspStapling:    types.Int64Value(3),
+				OneTimeLoading:  types.BoolValue(true),
+				BuildChain:      types.BoolValue(false),
+				Usage:           types.StringValue("encipherment"),
+			},
+			{
+				// Inline verification CA — public cert only, no key.
+				Certificate: mustList(t, []string{"-----BEGIN CERTIFICATE-----", "MIIB...", "-----END CERTIFICATE-----"}),
+				Usage:       types.StringValue("verify"),
+			},
+		},
+	}
+	out := expandTLSSettingsFromModel(m)
+	certs, ok := out["certificates"].([]any)
+	if !ok || len(certs) != 2 {
+		t.Fatalf("certificates: %#v", out["certificates"])
+	}
+	first := certs[0].(map[string]any)
+	if first["certificate_file"] != "/etc/certs/server.pem" || first["key_file"] != "/etc/certs/server.key" {
+		t.Fatalf("file-backed entry: %#v", first)
+	}
+	if first["ocsp_stapling"] != 3 || first["one_time_loading"] != true {
+		t.Fatalf("flags: %#v", first)
+	}
+	if first["usage"] != "encipherment" {
+		t.Fatalf("usage: %#v", first)
+	}
+	if v, has := first["build_chain"]; !has || v != false {
+		t.Fatalf("explicitly-false build_chain must still be written: %#v", first)
+	}
+	second := certs[1].(map[string]any)
+	if _, has := second["key"]; has {
+		t.Fatalf("null key list must be omitted: %#v", second)
+	}
+	if second["usage"] != "verify" {
+		t.Fatalf("verify usage: %#v", second)
+	}
+}
+
+// Absent (nil) and explicitly-empty certificates must be distinguishable:
+// nil keeps prior entries via UseStateForUnknown, [] writes an empty array
+// the panel can observe (and refuse on v3.8.0+ while security = "tls").
+func TestExpandTLSSettingsFromModel_CertificatesEmptyVsAbsent(t *testing.T) {
+	absent := expandTLSSettingsFromModel(&InboundTLSSettingsModel{})
+	if _, has := absent["certificates"]; has {
+		t.Fatalf("absent certificates must not be written: %#v", absent)
+	}
+	out := expandTLSSettingsFromModel(&InboundTLSSettingsModel{Certificates: []InboundTLSCertModel{}})
+	certs, ok := out["certificates"].([]any)
+	if !ok || len(certs) != 0 {
+		t.Fatalf("explicit empty must round-trip as an empty array: %#v", out["certificates"])
+	}
+}
+
+func TestFlattenTLSSettingsToModel_Certificates(t *testing.T) {
+	m := flattenTLSSettingsToModel(map[string]any{
+		"server_name": "tls.example.com",
+		"certificates": []any{
+			map[string]any{
+				"certificate_file": "/etc/certs/server.pem",
+				"key_file":         "/etc/certs/server.key",
+				"ocsp_stapling":    float64(3),
+				"one_time_loading": true,
+				"usage":            "encipherment",
+			},
+			map[string]any{
+				"certificate": []any{"-----BEGIN CERTIFICATE-----", "MIIB..."},
+				"key":         []any{"-----BEGIN PRIVATE KEY-----", "MC4..."},
+			},
+		},
+	})
+	if len(m.Certificates) != 2 {
+		t.Fatalf("certificates: %#v", m.Certificates)
+	}
+	if m.Certificates[0].CertificateFile.ValueString() != "/etc/certs/server.pem" {
+		t.Fatalf("file entry: %#v", m.Certificates[0])
+	}
+	if m.Certificates[0].OcspStapling.ValueInt64() != 3 || !m.Certificates[0].OneTimeLoading.ValueBool() {
+		t.Fatalf("flags: %#v", m.Certificates[0])
+	}
+	if len(m.Certificates[1].Certificate.Elements()) != 2 {
+		t.Fatalf("inline certificate: %#v", m.Certificates[1].Certificate)
+	}
+	if len(m.Certificates[1].Key.Elements()) != 2 {
+		t.Fatalf("inline key: %#v", m.Certificates[1].Key)
+	}
+	if m.Certificates[1].Usage.ValueString() != "" {
+		t.Fatalf("absent usage must flatten null, got %#v", m.Certificates[1].Usage)
+	}
+}
+
+func TestFlattenTLSSettingsToModel_CertificatesAbsent(t *testing.T) {
+	m := flattenTLSSettingsToModel(map[string]any{"server_name": "tls.example.com"})
+	if m.Certificates != nil {
+		t.Fatalf("absent certificates must flatten to nil (null), got %#v", m.Certificates)
+	}
+}
+
+// TestTLSCertificatesWireRoundTrip walks the full four-layer pipeline:
+// typed model → untyped snake → camelCase tlsSettings JSON (what goes over
+// the wire) → back. This is the path that previously DROPPED certificates
+// entirely (the field was unmodeled), breaking TLS inbounds on 3x-ui v3.8.0+.
+func TestTLSCertificatesWireRoundTrip(t *testing.T) {
+	model := &InboundStreamSettingsModel{
+		Network:  types.StringValue("tcp"),
+		Security: types.StringValue("tls"),
+		TLSSettings: &InboundTLSSettingsModel{
+			ServerName: types.StringValue("tls.example.com"),
+			Certificates: []InboundTLSCertModel{{
+				CertificateFile: types.StringValue("/etc/certs/server.pem"),
+				KeyFile:         types.StringValue("/etc/certs/server.key"),
+				Usage:           types.StringValue("encipherment"),
+			}},
+		},
+	}
+
+	wire := buildStreamSettingsJSON(expandStreamSettingsFromModel(model))
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(wire), &payload); err != nil {
+		t.Fatalf("wire JSON invalid: %v\n%s", err, wire)
+	}
+	tls, ok := payload["tlsSettings"].(map[string]any)
+	if !ok {
+		t.Fatalf("tlsSettings missing from wire JSON: %s", wire)
+	}
+	certs, ok := tls["certificates"].([]any)
+	if !ok || len(certs) != 1 {
+		t.Fatalf("certificates missing from wire JSON: %s", wire)
+	}
+	entry := certs[0].(map[string]any)
+	if entry["certificateFile"] != "/etc/certs/server.pem" || entry["keyFile"] != "/etc/certs/server.key" {
+		t.Fatalf("wire entry: %#v", entry)
+	}
+
+	// And back: JSON → untyped snake → typed model.
+	flat, err := flattenStreamSettings(wire)
+	if err != nil {
+		t.Fatalf("flattenStreamSettings: %v", err)
+	}
+	tlsFlat, ok := flat[0].(map[string]any)["tls_settings"].([]any)[0].(map[string]any)
+	if !ok {
+		t.Fatalf("tls_settings missing from flattened: %#v", flat)
+	}
+	back := flattenTLSSettingsToModel(tlsFlat)
+	if len(back.Certificates) != 1 {
+		t.Fatalf("round-trip lost certificates: %#v", back.Certificates)
+	}
+	if back.Certificates[0].CertificateFile.ValueString() != "/etc/certs/server.pem" {
+		t.Fatalf("round-trip certificate_file: %#v", back.Certificates[0])
+	}
+	if back.ServerName.ValueString() != "tls.example.com" {
+		t.Fatalf("round-trip server_name: %#v", back.ServerName)
+	}
+}
+
+// mustList builds a types.List of strings, failing the test on error.
+func mustList(t *testing.T, items []string) types.List {
+	t.Helper()
+	list, diags := types.ListValueFrom(t.Context(), types.StringType, items)
+	if diags.HasError() {
+		t.Fatalf("ListValueFrom: %v", diags)
+	}
+	return list
 }

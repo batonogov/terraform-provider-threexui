@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
@@ -10,6 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -55,13 +57,32 @@ type InboundRealitySettingsModel struct {
 }
 
 type InboundTLSSettingsModel struct {
-	ServerName    types.String `tfsdk:"server_name"`
-	Fingerprint   types.String `tfsdk:"fingerprint"`
-	AllowInsecure types.Bool   `tfsdk:"allow_insecure"`
-	Alpn          types.List   `tfsdk:"alpn"` // list of string
-	MinVersion    types.String `tfsdk:"min_version"`
-	MaxVersion    types.String `tfsdk:"max_version"`
-	Cipher        types.String `tfsdk:"cipher"`
+	ServerName    types.String          `tfsdk:"server_name"`
+	Fingerprint   types.String          `tfsdk:"fingerprint"`
+	AllowInsecure types.Bool            `tfsdk:"allow_insecure"`
+	Alpn          types.List            `tfsdk:"alpn"` // list of string
+	MinVersion    types.String          `tfsdk:"min_version"`
+	MaxVersion    types.String          `tfsdk:"max_version"`
+	Cipher        types.String          `tfsdk:"cipher"`
+	Certificates  []InboundTLSCertModel `tfsdk:"certificates"`
+}
+
+// InboundTLSCertModel is one entry of tlsSettings.certificates[] — either
+// file-backed (certificate_file/key_file paths on the panel host) or inline
+// PEM (certificate[]/key[] string lists). 3x-ui v3.8.0+ refuses to save a
+// security="tls" inbound without a server certificate (validateInboundTLS-
+// Certificates, upstream #6429), so this block is what makes TLS inbounds
+// expressible on v3.8.x. `key` holds private key PEM — mark usage sites
+// Sensitive.
+type InboundTLSCertModel struct {
+	CertificateFile types.String `tfsdk:"certificate_file"`
+	KeyFile         types.String `tfsdk:"key_file"`
+	Certificate     types.List   `tfsdk:"certificate"` // list of string (inline PEM)
+	Key             types.List   `tfsdk:"key"`         // list of string (inline PEM, private)
+	OcspStapling    types.Int64  `tfsdk:"ocsp_stapling"`
+	OneTimeLoading  types.Bool   `tfsdk:"one_time_loading"`
+	BuildChain      types.Bool   `tfsdk:"build_chain"`
+	Usage           types.String `tfsdk:"usage"`
 }
 
 // realityInnerSettingsAttrTypes defines the attribute types for the
@@ -362,6 +383,77 @@ func inboundStreamSettingsBlockSchema() schema.SingleNestedBlock {
 						Optional: true, Computed: true,
 						PlanModifiers: []planmodifier.String{
 							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"certificates": schema.ListNestedAttribute{
+						Description: "Server certificates. 3x-ui v3.8.0+ refuses to save a TLS-secured inbound " +
+							"without a server certificate entry (cert+key, file paths or inline PEM). " +
+							"Omitting the attribute keeps the existing entries; set it to [] explicitly to clear them.",
+						Optional: true, Computed: true,
+						PlanModifiers: []planmodifier.List{
+							listplanmodifier.UseStateForUnknown(),
+						},
+						NestedObject: schema.NestedAttributeObject{
+							Attributes: map[string]schema.Attribute{
+								"certificate_file": schema.StringAttribute{
+									Optional: true, Computed: true,
+									Description: "Path to the certificate file on the panel host (mutually exclusive with certificate).",
+									PlanModifiers: []planmodifier.String{
+										stringplanmodifier.UseStateForUnknown(),
+									},
+								},
+								"key_file": schema.StringAttribute{
+									Optional: true, Computed: true,
+									Description: "Path to the private key file on the panel host. Optional only for usage = verify.",
+									PlanModifiers: []planmodifier.String{
+										stringplanmodifier.UseStateForUnknown(),
+									},
+								},
+								"certificate": schema.ListAttribute{
+									Optional: true, Computed: true,
+									ElementType: types.StringType,
+									Description: "Inline certificate PEM (list of lines).",
+									PlanModifiers: []planmodifier.List{
+										listplanmodifier.UseStateForUnknown(),
+									},
+								},
+								"key": schema.ListAttribute{
+									Optional: true, Computed: true, Sensitive: true,
+									ElementType: types.StringType,
+									Description: "Inline private key PEM (list of lines).",
+									PlanModifiers: []planmodifier.List{
+										listplanmodifier.UseStateForUnknown(),
+									},
+								},
+								"ocsp_stapling": schema.Int64Attribute{
+									Optional: true, Computed: true,
+									PlanModifiers: []planmodifier.Int64{
+										int64planmodifier.UseStateForUnknown(),
+									},
+								},
+								"one_time_loading": schema.BoolAttribute{
+									Optional: true, Computed: true,
+									PlanModifiers: []planmodifier.Bool{
+										boolplanmodifier.UseStateForUnknown(),
+									},
+								},
+								"build_chain": schema.BoolAttribute{
+									Optional: true, Computed: true,
+									PlanModifiers: []planmodifier.Bool{
+										boolplanmodifier.UseStateForUnknown(),
+									},
+								},
+								"usage": schema.StringAttribute{
+									Optional: true, Computed: true,
+									Description: "Certificate usage: encipherment, verify, or issue.",
+									Validators: []validator.String{
+										stringvalidator.OneOf("encipherment", "verify", "issue"),
+									},
+									PlanModifiers: []planmodifier.String{
+										stringplanmodifier.UseStateForUnknown(),
+									},
+								},
+							},
 						},
 					},
 				},
@@ -821,6 +913,42 @@ func expandTLSSettingsFromModel(m *InboundTLSSettingsModel) map[string]any {
 	if !m.Cipher.IsNull() && !m.Cipher.IsUnknown() {
 		out["cipher"] = m.Cipher.ValueString()
 	}
+	// nil (absent from config) preserves prior entries via UseStateForUnknown;
+	// an explicitly empty non-nil slice writes "certificates": [] — which the
+	// panel accepts as "no certificates" (and refuses on v3.8.0+ while
+	// security = "tls", surfacing its own validation error).
+	if m.Certificates != nil {
+		certs := make([]any, 0, len(m.Certificates))
+		for _, c := range m.Certificates {
+			entry := map[string]any{}
+			if !c.CertificateFile.IsNull() && !c.CertificateFile.IsUnknown() {
+				entry["certificate_file"] = c.CertificateFile.ValueString()
+			}
+			if !c.KeyFile.IsNull() && !c.KeyFile.IsUnknown() {
+				entry["key_file"] = c.KeyFile.ValueString()
+			}
+			if !c.Certificate.IsNull() && !c.Certificate.IsUnknown() {
+				entry["certificate"] = typesListToAnySlice(c.Certificate)
+			}
+			if !c.Key.IsNull() && !c.Key.IsUnknown() {
+				entry["key"] = typesListToAnySlice(c.Key)
+			}
+			if !c.OcspStapling.IsNull() && !c.OcspStapling.IsUnknown() {
+				entry["ocsp_stapling"] = int(c.OcspStapling.ValueInt64())
+			}
+			if !c.OneTimeLoading.IsNull() && !c.OneTimeLoading.IsUnknown() {
+				entry["one_time_loading"] = c.OneTimeLoading.ValueBool()
+			}
+			if !c.BuildChain.IsNull() && !c.BuildChain.IsUnknown() {
+				entry["build_chain"] = c.BuildChain.ValueBool()
+			}
+			if !c.Usage.IsNull() && !c.Usage.IsUnknown() {
+				entry["usage"] = c.Usage.ValueString()
+			}
+			certs = append(certs, entry)
+		}
+		out["certificates"] = certs
+	}
 	return out
 }
 
@@ -1243,7 +1371,67 @@ func flattenTLSSettingsToModel(data map[string]any) *InboundTLSSettingsModel {
 	} else {
 		m.Cipher = types.StringNull()
 	}
+	if v, ok := data["certificates"].([]any); ok {
+		m.Certificates = flattenInboundTLSCertificates(v)
+	}
 	return m
+}
+
+// flattenInboundTLSCertificates converts untyped snake_case certificate
+// entries (produced by flattenTLSSettings) into the typed model slice. The
+// panel never echoes a `certificates` key when none are stored, leaving the
+// model field nil (null), which UseStateForUnknown turns into "keep prior".
+func flattenInboundTLSCertificates(list []any) []InboundTLSCertModel {
+	out := make([]InboundTLSCertModel, 0, len(list))
+	for _, item := range list {
+		entry, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		c := InboundTLSCertModel{}
+		if v, ok := entry["certificate_file"].(string); ok && v != "" {
+			c.CertificateFile = types.StringValue(v)
+		} else {
+			c.CertificateFile = types.StringNull()
+		}
+		if v, ok := entry["key_file"].(string); ok && v != "" {
+			c.KeyFile = types.StringValue(v)
+		} else {
+			c.KeyFile = types.StringNull()
+		}
+		if v, ok := entry["certificate"].([]any); ok {
+			c.Certificate = anySliceToTypesList(v)
+		} else {
+			c.Certificate = types.ListNull(types.StringType)
+		}
+		if v, ok := entry["key"].([]any); ok {
+			c.Key = anySliceToTypesList(v)
+		} else {
+			c.Key = types.ListNull(types.StringType)
+		}
+		if v, ok := entry["ocsp_stapling"]; ok {
+			c.OcspStapling = types.Int64Value(int64(intValue(v)))
+		} else {
+			c.OcspStapling = types.Int64Null()
+		}
+		if v, ok := entry["one_time_loading"].(bool); ok {
+			c.OneTimeLoading = types.BoolValue(v)
+		} else {
+			c.OneTimeLoading = types.BoolNull()
+		}
+		if v, ok := entry["build_chain"].(bool); ok {
+			c.BuildChain = types.BoolValue(v)
+		} else {
+			c.BuildChain = types.BoolNull()
+		}
+		if v, ok := entry["usage"].(string); ok && v != "" {
+			c.Usage = types.StringValue(v)
+		} else {
+			c.Usage = types.StringNull()
+		}
+		out = append(out, c)
+	}
+	return out
 }
 
 func flattenRealityInnerSettingsToObject(data map[string]any) types.Object {
