@@ -97,6 +97,8 @@ resource "threexui_inbound_client" "client_a" {
 
 | Versión de 3x-ui | Estado |
 | --- | --- |
+| v3.8.5 | Probado |
+| v3.8.0 | Probado |
 | v3.7.0 | Probado |
 | v3.6.0 | Probado |
 | v3.5.0 | Probado |
@@ -105,11 +107,6 @@ resource "threexui_inbound_client" "client_a" {
 | v3.4.0 | Probado |
 | v3.3.1 | Probado |
 | v3.3.0 | Probado |
-| v3.2.8 | Probado |
-| v3.2.7 | Probado |
-| v3.2.6 | Probado |
-| v3.2.5 | Probado |
-| v3.2.0 | Probado |
 
 Las funciones de protocolos nuevos están protegidas con `requireMinVersion` y se omiten automáticamente en versiones antiguas, por lo que el proveedor funciona en toda la matriz sin forks por versión.
 

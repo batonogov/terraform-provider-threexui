@@ -1,6 +1,6 @@
 services:
   3xui:
-    image: ghcr.io/mhsanaei/3x-ui:${THREEXUI_VERSION:-v3.7.0}
+    image: ghcr.io/mhsanaei/3x-ui:${THREEXUI_VERSION:-v3.8.5}
     ports:
       - "2053:2053" # HTTP panel
       # Subscription server port, published so acceptance tests can probe the

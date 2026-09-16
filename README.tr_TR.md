@@ -97,6 +97,8 @@ resource "threexui_inbound_client" "client_a" {
 
 | 3x-ui sürümü | Durum |
 | --- | --- |
+| v3.8.5 | Test edildi |
+| v3.8.0 | Test edildi |
 | v3.7.0 | Test edildi |
 | v3.6.0 | Test edildi |
 | v3.5.0 | Test edildi |
@@ -105,11 +107,6 @@ resource "threexui_inbound_client" "client_a" {
 | v3.4.0 | Test edildi |
 | v3.3.1 | Test edildi |
 | v3.3.0 | Test edildi |
-| v3.2.8 | Test edildi |
-| v3.2.7 | Test edildi |
-| v3.2.6 | Test edildi |
-| v3.2.5 | Test edildi |
-| v3.2.0 | Test edildi |
 
 Daha yeni protokol özellikleri `requireMinVersion` ile korunur ve eski sürümlerde otomatik olarak atlanır, bu nedenle provider sürüm başına ayrı dallar olmadan tüm sürümlerde sorunsuz çalışır.
 
