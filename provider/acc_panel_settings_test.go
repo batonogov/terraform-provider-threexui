@@ -1701,3 +1701,163 @@ resource "threexui_panel_general" "test" {
 		},
 	})
 }
+
+// --- panel_discord (3x-ui v3.8.0+) ---
+
+// TestAccPanelDiscord round-trips the Discord notifier settings. The enable
+// flips exercise the provider-initiated panel restart (discordBotEnable feeds
+// the startup-only alarm sampler registration, see panelSettingsNeedRestart).
+func TestAccPanelDiscord(t *testing.T) {
+	requireMinVersion(t, "v3.8.0")
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: testAccProviderConfig() + `
+resource "threexui_panel_discord" "test" {
+  discord_bot_enable      = true
+  discord_bot_token       = "MTIzNDU2Nzg5MDEyMzQ1Njc4.Gabcde.fAkEtOkEnFaKeToKeNfAkE"
+  discord_channel_id      = "1234567890123456789"
+  discord_admin_ids       = "111111111111111111,222222222222222222"
+  discord_run_time        = "@daily"
+  discord_bot_backup      = false
+  discord_cpu             = 80
+  discord_memory          = 90
+  discord_lang            = "en-US"
+  discord_enabled_events  = "login,backup,cpu.high,memory.high"
+}`,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("threexui_panel_discord.test", "id", "settings"),
+					resource.TestCheckResourceAttr("threexui_panel_discord.test", "discord_bot_enable", "true"),
+					resource.TestCheckResourceAttr("threexui_panel_discord.test", "discord_channel_id", "1234567890123456789"),
+					resource.TestCheckResourceAttr("threexui_panel_discord.test", "discord_admin_ids", "111111111111111111,222222222222222222"),
+					resource.TestCheckResourceAttr("threexui_panel_discord.test", "discord_cpu", "80"),
+					resource.TestCheckResourceAttr("threexui_panel_discord.test", "discord_enabled_events", "login,backup,cpu.high,memory.high"),
+				),
+			},
+			// Update: disable the bot, move the language, nudge a threshold
+			// within its alarm-registration class (80 -> 90 must not restart).
+			{
+				Config: testAccProviderConfig() + `
+resource "threexui_panel_discord" "test" {
+  discord_bot_enable      = false
+  discord_bot_token       = ""
+  discord_channel_id      = "1234567890123456789"
+  discord_admin_ids       = "111111111111111111"
+  discord_run_time        = "@every 6h"
+  discord_bot_backup      = true
+  discord_cpu             = 90
+  discord_memory          = 90
+  discord_lang            = "ru-RU"
+  discord_enabled_events  = "login"
+}`,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("threexui_panel_discord.test", "discord_bot_enable", "false"),
+					resource.TestCheckResourceAttr("threexui_panel_discord.test", "discord_lang", "ru-RU"),
+					resource.TestCheckResourceAttr("threexui_panel_discord.test", "discord_bot_backup", "true"),
+				),
+			},
+			// ImportState: /setting/all blanks discordBotToken on v3.8.x, so
+			// the token cannot be verified against state.
+			{
+				ResourceName:            "threexui_panel_discord.test",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateId:           "settings",
+				ImportStateVerifyIgnore: []string{"discord_bot_token"},
+			},
+			// Idempotency
+			{
+				Config: testAccProviderConfig() + `
+resource "threexui_panel_discord" "test" {
+  discord_bot_enable      = false
+  discord_bot_token       = ""
+  discord_channel_id      = "1234567890123456789"
+  discord_admin_ids       = "111111111111111111"
+  discord_run_time        = "@every 6h"
+  discord_bot_backup      = true
+  discord_cpu             = 90
+  discord_memory          = 90
+  discord_lang            = "ru-RU"
+  discord_enabled_events  = "login"
+}`,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
+// TestAccPanelDiscordWriteOnly mirrors TestAccPanelTelegramWriteOnly for the
+// discord bot token (Terraform/OpenTofu 1.11+ write-only attributes).
+func TestAccPanelDiscordWriteOnly(t *testing.T) {
+	requireMinVersion(t, "v3.8.0")
+	resource.Test(t, resource.TestCase{
+		TerraformVersionChecks: []tfversion.TerraformVersionCheck{
+			tfversion.SkipBelow(version.Must(version.NewVersion("1.11.0"))),
+		},
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: testAccProviderConfig() + `
+resource "threexui_panel_discord" "test" {
+  discord_bot_enable         = false
+  discord_bot_token_wo       = "MTIzNDU2Nzg5MDEyMzQ1Njc4.Gabcde.fAkEtOkEnFaKeToKeNfAkE"
+  discord_bot_token_wo_version = 1
+  discord_channel_id         = ""
+  discord_admin_ids          = ""
+  discord_run_time           = "@daily"
+  discord_bot_backup         = false
+  discord_cpu                = 80
+  discord_memory             = 90
+  discord_lang               = "en-US"
+  discord_enabled_events     = ""
+}`,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("threexui_panel_discord.test", "id", "settings"),
+					resource.TestCheckResourceAttr("threexui_panel_discord.test", "discord_bot_enable", "false"),
+					resource.TestCheckResourceAttr("threexui_panel_discord.test", "discord_bot_token_wo_version", "1"),
+				),
+			},
+			// Idempotency: re-applying the same _wo config must produce an empty plan.
+			{
+				Config: testAccProviderConfig() + `
+resource "threexui_panel_discord" "test" {
+  discord_bot_enable         = false
+  discord_bot_token_wo       = "MTIzNDU2Nzg5MDEyMzQ1Njc4.Gabcde.fAkEtOkEnFaKeToKeNfAkE"
+  discord_bot_token_wo_version = 1
+  discord_channel_id         = ""
+  discord_admin_ids          = ""
+  discord_run_time           = "@daily"
+  discord_bot_backup         = false
+  discord_cpu                = 80
+  discord_memory             = 90
+  discord_lang               = "en-US"
+  discord_enabled_events     = ""
+}`,
+				PlanOnly: true,
+			},
+			// Restore defaults (plain attribute path).
+			{
+				Config: testAccProviderConfig() + `
+resource "threexui_panel_discord" "test" {
+  discord_bot_enable      = false
+  discord_bot_token       = ""
+  discord_channel_id      = ""
+  discord_admin_ids       = ""
+  discord_run_time        = "@daily"
+  discord_bot_backup      = false
+  discord_cpu             = 80
+  discord_memory          = 90
+  discord_lang            = "en-US"
+  discord_enabled_events  = ""
+}`,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("threexui_panel_discord.test", "id", "settings"),
+				),
+			},
+		},
+	})
+}

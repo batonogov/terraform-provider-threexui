@@ -484,6 +484,192 @@ func flattenPanelEmail(in map[string]any) *PanelEmailModel {
 	return m
 }
 
+// ---------------------------------------------------------------------------
+// Panel Discord (Discord notification bot) model, schema, expand/flatten
+// ---------------------------------------------------------------------------
+
+// PanelDiscordModel mirrors the Discord notification fields in 3x-ui v3.8.0+
+// AllSetting (3x-ui #6486). The fields do not exist on older panels: reads
+// surface nulls and writes are silently dropped by gin form binding, so the
+// resource is effectively v3.8.0+ only. discord_bot_token is a write-only
+// secret (mirrors tg_bot_token_wo / panel_telegram).
+type PanelDiscordModel struct {
+	ID                   types.String `tfsdk:"id"`
+	DiscordBotEnable     types.Bool   `tfsdk:"discord_bot_enable"`
+	DiscordBotToken      types.String `tfsdk:"discord_bot_token"`
+	DiscordBotTokenWO    types.String `tfsdk:"discord_bot_token_wo"`
+	DiscordBotTokenWOVer types.Int64  `tfsdk:"discord_bot_token_wo_version"`
+	DiscordChannelID     types.String `tfsdk:"discord_channel_id"`
+	DiscordAdminIDs      types.String `tfsdk:"discord_admin_ids"`
+	DiscordRunTime       types.String `tfsdk:"discord_run_time"`
+	DiscordBotBackup     types.Bool   `tfsdk:"discord_bot_backup"`
+	DiscordCPU           types.Int64  `tfsdk:"discord_cpu"`
+	DiscordMemory        types.Int64  `tfsdk:"discord_memory"`
+	DiscordLang          types.String `tfsdk:"discord_lang"`
+	DiscordEnabledEvents types.String `tfsdk:"discord_enabled_events"`
+}
+
+func panelDiscordSchema() schema.Schema {
+	return schema.Schema{
+		Description: "Discord notification bot settings (3x-ui v3.8.0+; the Discord settings tab). On older panels reads return nulls and writes have no effect.",
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"discord_bot_enable": schema.BoolAttribute{
+				Optional: true, Computed: true,
+				Description:   "Enable the Discord notification bot. Requires 3x-ui v3.8.0+.",
+				PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+			},
+			"discord_bot_token": schema.StringAttribute{
+				Optional: true, Computed: true, Sensitive: true,
+				Description: "Discord bot token. Requires 3x-ui v3.8.0+.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+				Validators: []validator.String{
+					stringvalidator.PreferWriteOnlyAttribute(path.MatchRoot("discord_bot_token_wo")),
+				},
+			},
+			"discord_bot_token_wo": schema.StringAttribute{
+				Optional:  true,
+				WriteOnly: true,
+				Description: "Write-only Discord bot token (Terraform/OpenTofu 1.11+). " +
+					"Use discord_bot_token_wo_version to rotate.",
+			},
+			"discord_bot_token_wo_version": schema.Int64Attribute{
+				Optional: true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
+				Validators: []validator.Int64{
+					int64validator.AlsoRequires(path.MatchRoot("discord_bot_token_wo")),
+				},
+			},
+			"discord_channel_id": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   "Discord channel ID the bot posts to. Requires 3x-ui v3.8.0+.",
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"discord_admin_ids": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   "Comma-separated Discord admin/user IDs allowed to use bot commands. Requires 3x-ui v3.8.0+.",
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"discord_run_time": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   "Cron schedule for the periodic stats report (e.g. @daily). Requires 3x-ui v3.8.0+.",
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"discord_bot_backup": schema.BoolAttribute{
+				Optional: true, Computed: true,
+				Description:   "Send database backups through the Discord bot. Requires 3x-ui v3.8.0+.",
+				PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+			},
+			"discord_cpu": schema.Int64Attribute{
+				Optional: true, Computed: true,
+				Description:   "CPU usage threshold (%) for Discord alerts (0-100). Requires 3x-ui v3.8.0+.",
+				Validators:    []validator.Int64{int64validator.Between(0, 100)},
+				PlanModifiers: []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
+			},
+			"discord_memory": schema.Int64Attribute{
+				Optional: true, Computed: true,
+				Description:   "Memory usage threshold (%) for Discord alerts (0-100). Requires 3x-ui v3.8.0+.",
+				Validators:    []validator.Int64{int64validator.Between(0, 100)},
+				PlanModifiers: []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
+			},
+			"discord_lang": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   "Discord bot language. Requires 3x-ui v3.8.0+.",
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"discord_enabled_events": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description: "Comma-separated event types to send via Discord (e.g. login, backup, cpu.high, memory.high). " +
+					"Requires 3x-ui v3.8.0+.",
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+		},
+	}
+}
+
+func expandPanelDiscord(m *PanelDiscordModel) map[string]any {
+	payload := map[string]any{}
+	if !m.DiscordBotEnable.IsNull() && !m.DiscordBotEnable.IsUnknown() {
+		payload["discordBotEnable"] = m.DiscordBotEnable.ValueBool()
+	}
+	if !m.DiscordBotTokenWO.IsNull() && !m.DiscordBotTokenWO.IsUnknown() {
+		payload["discordBotToken"] = m.DiscordBotTokenWO.ValueString()
+	} else if !m.DiscordBotToken.IsNull() && !m.DiscordBotToken.IsUnknown() {
+		payload["discordBotToken"] = m.DiscordBotToken.ValueString()
+	}
+	if !m.DiscordChannelID.IsNull() && !m.DiscordChannelID.IsUnknown() {
+		payload["discordChannelId"] = m.DiscordChannelID.ValueString()
+	}
+	if !m.DiscordAdminIDs.IsNull() && !m.DiscordAdminIDs.IsUnknown() {
+		payload["discordAdminIds"] = m.DiscordAdminIDs.ValueString()
+	}
+	if !m.DiscordRunTime.IsNull() && !m.DiscordRunTime.IsUnknown() {
+		payload["discordRunTime"] = m.DiscordRunTime.ValueString()
+	}
+	if !m.DiscordBotBackup.IsNull() && !m.DiscordBotBackup.IsUnknown() {
+		payload["discordBotBackup"] = m.DiscordBotBackup.ValueBool()
+	}
+	if !m.DiscordCPU.IsNull() && !m.DiscordCPU.IsUnknown() {
+		payload["discordCpu"] = int(m.DiscordCPU.ValueInt64())
+	}
+	if !m.DiscordMemory.IsNull() && !m.DiscordMemory.IsUnknown() {
+		payload["discordMemory"] = int(m.DiscordMemory.ValueInt64())
+	}
+	if !m.DiscordLang.IsNull() && !m.DiscordLang.IsUnknown() {
+		payload["discordLang"] = m.DiscordLang.ValueString()
+	}
+	if !m.DiscordEnabledEvents.IsNull() && !m.DiscordEnabledEvents.IsUnknown() {
+		payload["discordEnabledEvents"] = m.DiscordEnabledEvents.ValueString()
+	}
+	return payload
+}
+
+func flattenPanelDiscord(in map[string]any) *PanelDiscordModel {
+	m := &PanelDiscordModel{
+		ID: types.StringValue("settings"),
+	}
+	if v, ok := in["discordBotEnable"]; ok {
+		m.DiscordBotEnable = types.BoolValue(boolValue(v))
+	}
+	if v, ok := in["discordBotToken"]; ok {
+		m.DiscordBotToken = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["discordChannelId"]; ok {
+		m.DiscordChannelID = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["discordAdminIds"]; ok {
+		m.DiscordAdminIDs = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["discordRunTime"]; ok {
+		m.DiscordRunTime = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["discordBotBackup"]; ok {
+		m.DiscordBotBackup = types.BoolValue(boolValue(v))
+	}
+	if v, ok := in["discordCpu"]; ok {
+		m.DiscordCPU = types.Int64Value(int64(intValue(v)))
+	}
+	if v, ok := in["discordMemory"]; ok {
+		m.DiscordMemory = types.Int64Value(int64(intValue(v)))
+	}
+	if v, ok := in["discordLang"]; ok {
+		m.DiscordLang = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["discordEnabledEvents"]; ok {
+		m.DiscordEnabledEvents = types.StringValue(stringValue(v))
+	}
+	return m
+}
+
 type PanelSubscriptionModel struct {
 	ID                     types.String `tfsdk:"id"`
 	SubEnable              types.Bool   `tfsdk:"sub_enable"`
@@ -1678,6 +1864,7 @@ var panelSettingSecretKeys = []string{
 	"twoFactorToken",
 	"tgBotToken",
 	"smtpPassword",
+	"discordBotToken",
 }
 
 func settingsApplyTyped(
@@ -1940,6 +2127,14 @@ func preservePanelEmailSecrets(state, configured *PanelEmailModel) {
 	}
 	state.SmtpPassword = preserveSettingSecret(state.SmtpPassword, configured.SmtpPassword)
 	state.SmtpPasswordWOVersion = preserveWOVersion(state.SmtpPasswordWOVersion, configured.SmtpPasswordWOVersion)
+}
+
+func preservePanelDiscordSecrets(state, configured *PanelDiscordModel) {
+	if state == nil || configured == nil {
+		return
+	}
+	state.DiscordBotToken = preserveSettingSecret(state.DiscordBotToken, configured.DiscordBotToken)
+	state.DiscordBotTokenWOVer = preserveWOVersion(state.DiscordBotTokenWOVer, configured.DiscordBotTokenWOVer)
 }
 
 // preservePanelSubscriptionRemoved echoes configured values for fields that
@@ -2685,6 +2880,165 @@ func (r *PanelEmailResource) ImportState(ctx context.Context, _ resource.ImportS
 }
 
 // ---------------------------------------------------------------------------
+// PanelDiscordResource (threexui_panel_discord)
+// ---------------------------------------------------------------------------
+
+var (
+	_ resource.Resource                = &PanelDiscordResource{}
+	_ resource.ResourceWithConfigure   = &PanelDiscordResource{}
+	_ resource.ResourceWithImportState = &PanelDiscordResource{}
+	_ resource.ResourceWithModifyPlan  = &PanelDiscordResource{}
+)
+
+type PanelDiscordResource struct {
+	client *Client
+}
+
+func NewPanelDiscordResource() resource.Resource {
+	return &PanelDiscordResource{}
+}
+
+func (r *PanelDiscordResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_panel_discord"
+}
+
+func (r *PanelDiscordResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = panelDiscordSchema()
+}
+
+func (r *PanelDiscordResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+	client, ok := req.ProviderData.(*Client)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected Resource Configure Type", "Expected *Client")
+		return
+	}
+	r.client = client
+}
+
+func (r *PanelDiscordResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var plan PanelDiscordModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	var config PanelDiscordModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resolveDiscordTokenWO(&plan, config)
+
+	desired := expandPanelDiscord(&plan)
+	settingsApplyTyped(ctx, desired, &resp.Diagnostics, r.client)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	settings := settingsReadTyped(ctx, &resp.Diagnostics, r.client)
+	if settings == nil {
+		return
+	}
+	state := flattenPanelDiscord(settings)
+	preservePanelDiscordSecrets(state, &plan)
+	r.client.rememberConfiguredSettingSecrets(expandPanelDiscord(state))
+	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
+}
+
+func (r *PanelDiscordResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var prior PanelDiscordModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	settings := settingsReadTyped(ctx, &resp.Diagnostics, r.client)
+	if settings == nil {
+		return
+	}
+	state := flattenPanelDiscord(settings)
+	preservePanelDiscordSecrets(state, &prior)
+	r.client.rememberConfiguredSettingSecrets(expandPanelDiscord(state))
+	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
+}
+
+func (r *PanelDiscordResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	var plan PanelDiscordModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	var priorState PanelDiscordModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &priorState)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	var config PanelDiscordModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resolveDiscordTokenWOUpdate(&plan, priorState, config)
+
+	desired := expandPanelDiscord(&plan)
+	settingsApplyTyped(ctx, desired, &resp.Diagnostics, r.client)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	settings := settingsReadTyped(ctx, &resp.Diagnostics, r.client)
+	if settings == nil {
+		return
+	}
+	state := flattenPanelDiscord(settings)
+	preservePanelDiscordSecrets(state, &plan)
+	r.client.rememberConfiguredSettingSecrets(expandPanelDiscord(state))
+	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
+}
+
+func resolveDiscordTokenWO(plan *PanelDiscordModel, config PanelDiscordModel) {
+	if !config.DiscordBotTokenWO.IsNull() {
+		plan.DiscordBotToken = config.DiscordBotTokenWO
+	}
+}
+
+func resolveDiscordTokenWOUpdate(plan *PanelDiscordModel, state PanelDiscordModel, config PanelDiscordModel) {
+	if config.DiscordBotTokenWO.IsNull() {
+		return
+	}
+	if woVersionTriggered(plan.DiscordBotTokenWOVer, state.DiscordBotTokenWOVer) {
+		plan.DiscordBotToken = config.DiscordBotTokenWO
+	}
+}
+
+func (r *PanelDiscordResource) Delete(ctx context.Context, _ resource.DeleteRequest, resp *resource.DeleteResponse) {
+	resp.State.RemoveResource(ctx)
+}
+
+func (r *PanelDiscordResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	modifyPlanWOVersion(
+		ctx, req, resp,
+		func(m PanelDiscordModel) types.Int64 { return m.DiscordBotTokenWOVer },
+		func(m *PanelDiscordModel, v types.String) { m.DiscordBotToken = v },
+	)
+}
+
+func (r *PanelDiscordResource) ImportState(ctx context.Context, _ resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	settings := settingsReadTyped(ctx, &resp.Diagnostics, r.client)
+	if settings == nil {
+		return
+	}
+	state := flattenPanelDiscord(settings)
+	r.client.rememberConfiguredSettingSecrets(expandPanelDiscord(state))
+	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
+}
+
+// ---------------------------------------------------------------------------
 // PanelSubscriptionResource (threexui_panel_subscription)
 // ---------------------------------------------------------------------------
 
@@ -2903,6 +3257,21 @@ func panelSettingsNeedRestart(existing, desired map[string]any) bool {
 		"smtpEnabledEvents",
 		"smtpCpu",
 		"smtpMemory",
+		// Discord notifier (panel_discord, 3x-ui v3.8.0+). Unlike Telegram, the
+		// notify cron AND the gateway are hot-reloaded in-process on settings
+		// update (controller.SetReloadDiscordFunc, 3x-ui-3.8.5/internal/web/
+		// controller/setting.go:182-189 → web.go:693-719), so discordRunTime,
+		// discordBotToken and discordChannelId do NOT restart. discordBotEnable
+		// does: cpuAlarmWanted()/memoryAlarmWanted() — which decide whether the
+		// CPU/memory alarm samplers are registered at all — read it once at
+		// startup (web.go:439-448, :478-482) and the reload func never re-checks
+		// alarm registration, so enabling the bot with cpu.high/memory.high
+		// configured must restart or the samplers never appear. The thresholds
+		// and event list follow the same derived rules as tg/smtp below.
+		"discordBotEnable",
+		"discordEnabledEvents",
+		"discordCpu",
+		"discordMemory",
 		// Subscription server binding — parallels the web* keys above. The sub server is
 		// (re)initialised at panel startup, so changing whether/where it listens needs a
 		// panel restart; without it the subscription URL 404s until the panel is restarted.
@@ -3004,6 +3373,12 @@ var restartKeyRules = map[string]func(oldVal, newVal any) bool{
 	// not bounce the panel.
 	"tgEnabledEvents":   alarmEventMembershipChanged,
 	"smtpEnabledEvents": alarmEventMembershipChanged,
+	// Discord mirrors the tg/smtp alarm shape (web.go:478-482 and the memory
+	// analog): the sampler jobs test threshold <= 0 and cpu.high/memory.high
+	// membership once, at startup.
+	"discordCpu":           alarmThresholdCrossesZero,
+	"discordMemory":        alarmThresholdCrossesZero,
+	"discordEnabledEvents": alarmEventMembershipChanged,
 }
 
 // alarmThresholdCrossesZero reports whether a threshold change flips the

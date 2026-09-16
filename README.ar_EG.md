@@ -157,6 +157,7 @@ resource "threexui_inbound_client" "client_a" {
 | `threexui_panel_user` | بيانات اعتماد المسؤول |
 | `threexui_panel_telegram` | تكامل بوت تليجرام |
 | `threexui_panel_email` | إشعارات SMTP/email (v3.4.0+) |
+| `threexui_panel_discord` | إشعارات بوت Discord (v3.8.0+) |
 | `threexui_host_group` | توجيه مجموعات hosts (أكثر من host لكل inbound) |
 | `threexui_panel_subscription` | إعدادات خدمة الاشتراك |
 | `threexui_xray_basics` | إعدادات Xray الأساسية (log, policy, api, stats) |
