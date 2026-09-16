@@ -286,3 +286,98 @@ func truncateForError(s string) string {
 	}
 	return s[:max] + "…(truncated)"
 }
+
+// TestAccPanelSubscriptionV38 verifies the v3.8.0 subscription additions —
+// profile page mode, page-state templates, JSON-subscription routing/DNS and
+// the Happ customization block — round-trip through the panel API.
+func TestAccPanelSubscriptionV38(t *testing.T) {
+	requireMinVersion(t, "v3.8.0")
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: testAccProviderConfig() + `
+resource "threexui_panel_subscription" "test" {
+  sub_enable       = true
+  sub_path         = "/sub/"
+  sub_port         = 2096
+  sub_title        = "v38-test"
+
+  sub_profile_mode            = "custom"
+  sub_info_node_enable        = true
+  sub_calendar_expire_inclusive = false
+  sub_expired_template        = "expired {{remark}}"
+  sub_traffic_depleted_template = "depleted {{remark}}"
+  sub_json_routing_rules      = jsonencode([{ outboundTag = "direct" }])
+  sub_json_dns                = jsonencode({ servers = ["1.1.1.1"] })
+
+  happ_link_enable       = true
+  sub_happ_auto_detect   = true
+  sub_happ_provider_id   = "prov-1"
+  sub_happ_sub_info_text = "account info"
+  sub_happ_tun_mode      = "auto"
+  sub_happ_per_app_list  = "com.a,com.b"
+}`,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "id", "settings"),
+					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "sub_profile_mode", "custom"),
+					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "sub_info_node_enable", "true"),
+					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "sub_expired_template", "expired {{remark}}"),
+					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "happ_link_enable", "true"),
+					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "sub_happ_provider_id", "prov-1"),
+					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "sub_happ_per_app_list", "com.a,com.b"),
+				),
+			},
+			// Update: rotate the Happ block and the profile mode (both restart
+			// keys — initRouter-frozen) and confirm the values stick.
+			{
+				Config: testAccProviderConfig() + `
+resource "threexui_panel_subscription" "test" {
+  sub_enable       = true
+  sub_path         = "/sub/"
+  sub_port         = 2096
+  sub_title        = "v38-test"
+
+  sub_profile_mode            = "none"
+  sub_info_node_enable        = false
+  sub_calendar_expire_inclusive = true
+  sub_expired_template        = "expired {{remark}}"
+  sub_traffic_depleted_template = "depleted {{remark}}"
+
+  happ_link_enable       = false
+  sub_happ_auto_detect   = false
+  sub_happ_provider_id   = "prov-2"
+}`,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "sub_profile_mode", "none"),
+					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "sub_calendar_expire_inclusive", "true"),
+					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "happ_link_enable", "false"),
+					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "sub_happ_provider_id", "prov-2"),
+				),
+			},
+			// Idempotency
+			{
+				Config: testAccProviderConfig() + `
+resource "threexui_panel_subscription" "test" {
+  sub_enable       = true
+  sub_path         = "/sub/"
+  sub_port         = 2096
+  sub_title        = "v38-test"
+
+  sub_profile_mode            = "none"
+  sub_info_node_enable        = false
+  sub_calendar_expire_inclusive = true
+  sub_expired_template        = "expired {{remark}}"
+  sub_traffic_depleted_template = "depleted {{remark}}"
+
+  happ_link_enable       = false
+  sub_happ_auto_detect   = false
+  sub_happ_provider_id   = "prov-2"
+}`,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}

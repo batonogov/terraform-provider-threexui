@@ -57,6 +57,7 @@ resource "threexui_panel_general" "settings" {
 - `outbound_down_threshold` (Optional, Number) - Consecutive-failure threshold before the `outbound.down` notification fires (1-100). Added in 3x-ui v3.6.0; older panels report `0` (unsupported).
 - `restart_xray_on_client_disable` (Optional, Boolean) - Restart Xray when clients are automatically disabled by expiry or traffic limit. Default is `true` on 3x-ui v2.9.4+.
 - `ip_limit_allowlist` (Optional, String) - Comma-separated addresses or CIDRs exempt from the per-client IP limit. Added in 3x-ui v3.7.0; older panels report an empty string (unsupported). Entries are validated at plan time with the same rules the panel uses (`netip`), which rejects zero-padded prefixes such as `10.0.0.0/024`.
+- `reality_scan_candidates` (Optional, String) - REALITY target scan candidates (comma-separated `host:port` entries the panel scans when picking a dest). Added in 3x-ui v3.8.0; older panels report an empty string (unsupported).
 
 ### LDAP
 

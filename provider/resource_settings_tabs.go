@@ -714,6 +714,42 @@ type PanelSubscriptionModel struct {
 	SubHideSettings        types.Bool   `tfsdk:"sub_hide_settings"`
 	SubIncyEnableRouting   types.Bool   `tfsdk:"sub_incy_enable_routing"`
 	SubIncyRoutingRules    types.String `tfsdk:"sub_incy_routing_rules"`
+
+	// v3.8.0 subscription additions (profile page mode, page state templates,
+	// JSON-subscription routing/DNS, Happ client customization). The subHapp*
+	// family and subProfileMode/subJsonRoutingRules/subJsonDns are frozen into
+	// the sub server at startup (initRouter) — see panelSettingsNeedRestart.
+	SubProfileMode             types.String `tfsdk:"sub_profile_mode"`
+	SubInfoNodeEnable          types.Bool   `tfsdk:"sub_info_node_enable"`
+	SubCalendarExpireInclusive types.Bool   `tfsdk:"sub_calendar_expire_inclusive"`
+	SubExpiredTemplate         types.String `tfsdk:"sub_expired_template"`
+	SubTrafficDepletedTemplate types.String `tfsdk:"sub_traffic_depleted_template"`
+	SubJsonRoutingRules        types.String `tfsdk:"sub_json_routing_rules"`
+	SubJsonDns                 types.String `tfsdk:"sub_json_dns"`
+	HappLinkEnable             types.Bool   `tfsdk:"happ_link_enable"`
+	SubHappAutoDetect          types.Bool   `tfsdk:"sub_happ_auto_detect"`
+	SubHappProviderId          types.String `tfsdk:"sub_happ_provider_id"`
+	SubHappNewUrl              types.String `tfsdk:"sub_happ_new_url"`
+	SubHappFallbackUrl         types.String `tfsdk:"sub_happ_fallback_url"`
+	SubHappSubInfoColor        types.String `tfsdk:"sub_happ_sub_info_color"`
+	SubHappSubInfoText         types.String `tfsdk:"sub_happ_sub_info_text"`
+	SubHappSubInfoButtonText   types.String `tfsdk:"sub_happ_sub_info_button_text"`
+	SubHappSubInfoButtonLink   types.String `tfsdk:"sub_happ_sub_info_button_link"`
+	SubHappSubExpire           types.Bool   `tfsdk:"sub_happ_sub_expire"`
+	SubHappSubExpireButtonLink types.String `tfsdk:"sub_happ_sub_expire_button_link"`
+	SubHappNotificationExpire  types.Bool   `tfsdk:"sub_happ_notification_expire"`
+	SubHappNoLimit             types.Bool   `tfsdk:"sub_happ_no_limit"`
+	SubHappAlwaysHwid          types.Bool   `tfsdk:"sub_happ_always_hwid"`
+	SubHappTunMode             types.String `tfsdk:"sub_happ_tun_mode"`
+	SubHappTunType             types.String `tfsdk:"sub_happ_tun_type"`
+	SubHappExcludeRoutes       types.String `tfsdk:"sub_happ_exclude_routes"`
+	SubHappExcludeApns         types.Bool   `tfsdk:"sub_happ_exclude_apns"`
+	SubHappColorProfile        types.String `tfsdk:"sub_happ_color_profile"`
+	SubHappPingType            types.String `tfsdk:"sub_happ_ping_type"`
+	SubHappAutoConnect         types.Bool   `tfsdk:"sub_happ_auto_connect"`
+	SubHappAutoConnectType     types.String `tfsdk:"sub_happ_auto_connect_type"`
+	SubHappPerAppMode          types.String `tfsdk:"sub_happ_per_app_mode"`
+	SubHappPerAppList          types.String `tfsdk:"sub_happ_per_app_list"`
 }
 
 func panelSubscriptionSchema() schema.Schema {
@@ -769,6 +805,162 @@ func panelSubscriptionSchema() schema.Schema {
 			},
 			"sub_incy_routing_rules": schema.StringAttribute{
 				Optional: true, Computed: true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_profile_mode": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   "Subscription profile page mode: none, builtin, or custom. The built-in profile page is off by default on v3.8.0+ (upstream #6538); an existing sub_profile_url maps to custom. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty.",
+				Validators:    []validator.String{stringvalidator.OneOf("none", "builtin", "custom")},
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_info_node_enable": schema.BoolAttribute{
+				Optional: true, Computed: true,
+				Description:   "Add a dummy info/status node to client node lists. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty.",
+				PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+			},
+			"sub_calendar_expire_inclusive": schema.BoolAttribute{
+				Optional: true, Computed: true,
+				Description:   "Present expiry at month end instead of a rolling interval. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty.",
+				PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+			},
+			"sub_expired_template": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   "Template for expired-client subscription pages. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty.",
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_traffic_depleted_template": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   "Template for depleted-client subscription pages. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty.",
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_json_routing_rules": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   "Client routing rules baked into JSON subscriptions. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty.",
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_json_dns": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   "Panel-chosen DNS servers baked into JSON subscriptions. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty.",
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"happ_link_enable": schema.BoolAttribute{
+				Optional: true, Computed: true,
+				Description:   "Enable the Happ app link integration. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty.",
+				PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+			},
+			"sub_happ_auto_detect": schema.BoolAttribute{
+				Optional: true, Computed: true,
+				Description:   "Happ: auto-detect the client app. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty.",
+				PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+			},
+			"sub_happ_provider_id": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   "Happ: provider ID. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty.",
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_happ_new_url": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   "Happ: new-user URL. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty.",
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_happ_fallback_url": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   "Happ: fallback URL. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty.",
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_happ_sub_info_color": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   "Happ: subscription info color. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty.",
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_happ_sub_info_text": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   "Happ: subscription info text. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty.",
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_happ_sub_info_button_text": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   "Happ: subscription info button text. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty.",
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_happ_sub_info_button_link": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   "Happ: subscription info button link. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty.",
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_happ_sub_expire": schema.BoolAttribute{
+				Optional: true, Computed: true,
+				Description:   "Happ: show subscription expiry. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty.",
+				PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+			},
+			"sub_happ_sub_expire_button_link": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   "Happ: expiry button link. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty.",
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_happ_notification_expire": schema.BoolAttribute{
+				Optional: true, Computed: true,
+				Description:   "Happ: expiry notification. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty.",
+				PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+			},
+			"sub_happ_no_limit": schema.BoolAttribute{
+				Optional: true, Computed: true,
+				Description:   "Happ: no-limit profile. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty.",
+				PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+			},
+			"sub_happ_always_hwid": schema.BoolAttribute{
+				Optional: true, Computed: true,
+				Description:   "Happ: always use HWID limits. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty.",
+				PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+			},
+			"sub_happ_tun_mode": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   "Happ: tun mode. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty.",
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_happ_tun_type": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   "Happ: tun type. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty.",
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_happ_exclude_routes": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   "Happ: excluded routes. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty.",
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_happ_exclude_apns": schema.BoolAttribute{
+				Optional: true, Computed: true,
+				Description:   "Happ: exclude APNs. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty.",
+				PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+			},
+			"sub_happ_color_profile": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   "Happ: color profile. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty.",
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_happ_ping_type": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   "Happ: connectivity-check ping type. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty.",
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_happ_auto_connect": schema.BoolAttribute{
+				Optional: true, Computed: true,
+				Description:   "Happ: auto-connect. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty.",
+				PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+			},
+			"sub_happ_auto_connect_type": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   "Happ: auto-connect type. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty.",
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_happ_per_app_mode": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   "Happ: per-app proxy mode. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty.",
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_happ_per_app_list": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   "Happ: per-app list. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"sub_listen": schema.StringAttribute{
@@ -982,6 +1174,99 @@ func expandPanelSubscription(m *PanelSubscriptionModel) map[string]any {
 	if !m.SubIncyRoutingRules.IsNull() && !m.SubIncyRoutingRules.IsUnknown() {
 		payload["subIncyRoutingRules"] = m.SubIncyRoutingRules.ValueString()
 	}
+	if !m.SubProfileMode.IsNull() && !m.SubProfileMode.IsUnknown() {
+		payload["subProfileMode"] = m.SubProfileMode.ValueString()
+	}
+	if !m.SubInfoNodeEnable.IsNull() && !m.SubInfoNodeEnable.IsUnknown() {
+		payload["subInfoNodeEnable"] = m.SubInfoNodeEnable.ValueBool()
+	}
+	if !m.SubCalendarExpireInclusive.IsNull() && !m.SubCalendarExpireInclusive.IsUnknown() {
+		payload["subCalendarExpireInclusive"] = m.SubCalendarExpireInclusive.ValueBool()
+	}
+	if !m.SubExpiredTemplate.IsNull() && !m.SubExpiredTemplate.IsUnknown() {
+		payload["subExpiredTemplate"] = m.SubExpiredTemplate.ValueString()
+	}
+	if !m.SubTrafficDepletedTemplate.IsNull() && !m.SubTrafficDepletedTemplate.IsUnknown() {
+		payload["subTrafficDepletedTemplate"] = m.SubTrafficDepletedTemplate.ValueString()
+	}
+	if !m.SubJsonRoutingRules.IsNull() && !m.SubJsonRoutingRules.IsUnknown() {
+		payload["subJsonRoutingRules"] = m.SubJsonRoutingRules.ValueString()
+	}
+	if !m.SubJsonDns.IsNull() && !m.SubJsonDns.IsUnknown() {
+		payload["subJsonDns"] = m.SubJsonDns.ValueString()
+	}
+	if !m.HappLinkEnable.IsNull() && !m.HappLinkEnable.IsUnknown() {
+		payload["happLinkEnable"] = m.HappLinkEnable.ValueBool()
+	}
+	if !m.SubHappAutoDetect.IsNull() && !m.SubHappAutoDetect.IsUnknown() {
+		payload["subHappAutoDetect"] = m.SubHappAutoDetect.ValueBool()
+	}
+	if !m.SubHappProviderId.IsNull() && !m.SubHappProviderId.IsUnknown() {
+		payload["subHappProviderId"] = m.SubHappProviderId.ValueString()
+	}
+	if !m.SubHappNewUrl.IsNull() && !m.SubHappNewUrl.IsUnknown() {
+		payload["subHappNewUrl"] = m.SubHappNewUrl.ValueString()
+	}
+	if !m.SubHappFallbackUrl.IsNull() && !m.SubHappFallbackUrl.IsUnknown() {
+		payload["subHappFallbackUrl"] = m.SubHappFallbackUrl.ValueString()
+	}
+	if !m.SubHappSubInfoColor.IsNull() && !m.SubHappSubInfoColor.IsUnknown() {
+		payload["subHappSubInfoColor"] = m.SubHappSubInfoColor.ValueString()
+	}
+	if !m.SubHappSubInfoText.IsNull() && !m.SubHappSubInfoText.IsUnknown() {
+		payload["subHappSubInfoText"] = m.SubHappSubInfoText.ValueString()
+	}
+	if !m.SubHappSubInfoButtonText.IsNull() && !m.SubHappSubInfoButtonText.IsUnknown() {
+		payload["subHappSubInfoButtonText"] = m.SubHappSubInfoButtonText.ValueString()
+	}
+	if !m.SubHappSubInfoButtonLink.IsNull() && !m.SubHappSubInfoButtonLink.IsUnknown() {
+		payload["subHappSubInfoButtonLink"] = m.SubHappSubInfoButtonLink.ValueString()
+	}
+	if !m.SubHappSubExpire.IsNull() && !m.SubHappSubExpire.IsUnknown() {
+		payload["subHappSubExpire"] = m.SubHappSubExpire.ValueBool()
+	}
+	if !m.SubHappSubExpireButtonLink.IsNull() && !m.SubHappSubExpireButtonLink.IsUnknown() {
+		payload["subHappSubExpireButtonLink"] = m.SubHappSubExpireButtonLink.ValueString()
+	}
+	if !m.SubHappNotificationExpire.IsNull() && !m.SubHappNotificationExpire.IsUnknown() {
+		payload["subHappNotificationExpire"] = m.SubHappNotificationExpire.ValueBool()
+	}
+	if !m.SubHappNoLimit.IsNull() && !m.SubHappNoLimit.IsUnknown() {
+		payload["subHappNoLimit"] = m.SubHappNoLimit.ValueBool()
+	}
+	if !m.SubHappAlwaysHwid.IsNull() && !m.SubHappAlwaysHwid.IsUnknown() {
+		payload["subHappAlwaysHwid"] = m.SubHappAlwaysHwid.ValueBool()
+	}
+	if !m.SubHappTunMode.IsNull() && !m.SubHappTunMode.IsUnknown() {
+		payload["subHappTunMode"] = m.SubHappTunMode.ValueString()
+	}
+	if !m.SubHappTunType.IsNull() && !m.SubHappTunType.IsUnknown() {
+		payload["subHappTunType"] = m.SubHappTunType.ValueString()
+	}
+	if !m.SubHappExcludeRoutes.IsNull() && !m.SubHappExcludeRoutes.IsUnknown() {
+		payload["subHappExcludeRoutes"] = m.SubHappExcludeRoutes.ValueString()
+	}
+	if !m.SubHappExcludeApns.IsNull() && !m.SubHappExcludeApns.IsUnknown() {
+		payload["subHappExcludeApns"] = m.SubHappExcludeApns.ValueBool()
+	}
+	if !m.SubHappColorProfile.IsNull() && !m.SubHappColorProfile.IsUnknown() {
+		payload["subHappColorProfile"] = m.SubHappColorProfile.ValueString()
+	}
+	if !m.SubHappPingType.IsNull() && !m.SubHappPingType.IsUnknown() {
+		payload["subHappPingType"] = m.SubHappPingType.ValueString()
+	}
+	if !m.SubHappAutoConnect.IsNull() && !m.SubHappAutoConnect.IsUnknown() {
+		payload["subHappAutoConnect"] = m.SubHappAutoConnect.ValueBool()
+	}
+	if !m.SubHappAutoConnectType.IsNull() && !m.SubHappAutoConnectType.IsUnknown() {
+		payload["subHappAutoConnectType"] = m.SubHappAutoConnectType.ValueString()
+	}
+	if !m.SubHappPerAppMode.IsNull() && !m.SubHappPerAppMode.IsUnknown() {
+		payload["subHappPerAppMode"] = m.SubHappPerAppMode.ValueString()
+	}
+	if !m.SubHappPerAppList.IsNull() && !m.SubHappPerAppList.IsUnknown() {
+		payload["subHappPerAppList"] = m.SubHappPerAppList.ValueString()
+	}
 	if !m.SubListen.IsNull() && !m.SubListen.IsUnknown() {
 		payload["subListen"] = m.SubListen.ValueString()
 	}
@@ -1114,6 +1399,99 @@ func flattenPanelSubscription(in map[string]any) *PanelSubscriptionModel {
 	}
 	if v, ok := in["subIncyRoutingRules"]; ok {
 		m.SubIncyRoutingRules = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subProfileMode"]; ok {
+		m.SubProfileMode = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subInfoNodeEnable"]; ok {
+		m.SubInfoNodeEnable = types.BoolValue(boolValue(v))
+	}
+	if v, ok := in["subCalendarExpireInclusive"]; ok {
+		m.SubCalendarExpireInclusive = types.BoolValue(boolValue(v))
+	}
+	if v, ok := in["subExpiredTemplate"]; ok {
+		m.SubExpiredTemplate = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subTrafficDepletedTemplate"]; ok {
+		m.SubTrafficDepletedTemplate = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subJsonRoutingRules"]; ok {
+		m.SubJsonRoutingRules = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subJsonDns"]; ok {
+		m.SubJsonDns = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["happLinkEnable"]; ok {
+		m.HappLinkEnable = types.BoolValue(boolValue(v))
+	}
+	if v, ok := in["subHappAutoDetect"]; ok {
+		m.SubHappAutoDetect = types.BoolValue(boolValue(v))
+	}
+	if v, ok := in["subHappProviderId"]; ok {
+		m.SubHappProviderId = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subHappNewUrl"]; ok {
+		m.SubHappNewUrl = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subHappFallbackUrl"]; ok {
+		m.SubHappFallbackUrl = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subHappSubInfoColor"]; ok {
+		m.SubHappSubInfoColor = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subHappSubInfoText"]; ok {
+		m.SubHappSubInfoText = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subHappSubInfoButtonText"]; ok {
+		m.SubHappSubInfoButtonText = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subHappSubInfoButtonLink"]; ok {
+		m.SubHappSubInfoButtonLink = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subHappSubExpire"]; ok {
+		m.SubHappSubExpire = types.BoolValue(boolValue(v))
+	}
+	if v, ok := in["subHappSubExpireButtonLink"]; ok {
+		m.SubHappSubExpireButtonLink = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subHappNotificationExpire"]; ok {
+		m.SubHappNotificationExpire = types.BoolValue(boolValue(v))
+	}
+	if v, ok := in["subHappNoLimit"]; ok {
+		m.SubHappNoLimit = types.BoolValue(boolValue(v))
+	}
+	if v, ok := in["subHappAlwaysHwid"]; ok {
+		m.SubHappAlwaysHwid = types.BoolValue(boolValue(v))
+	}
+	if v, ok := in["subHappTunMode"]; ok {
+		m.SubHappTunMode = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subHappTunType"]; ok {
+		m.SubHappTunType = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subHappExcludeRoutes"]; ok {
+		m.SubHappExcludeRoutes = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subHappExcludeApns"]; ok {
+		m.SubHappExcludeApns = types.BoolValue(boolValue(v))
+	}
+	if v, ok := in["subHappColorProfile"]; ok {
+		m.SubHappColorProfile = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subHappPingType"]; ok {
+		m.SubHappPingType = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subHappAutoConnect"]; ok {
+		m.SubHappAutoConnect = types.BoolValue(boolValue(v))
+	}
+	if v, ok := in["subHappAutoConnectType"]; ok {
+		m.SubHappAutoConnectType = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subHappPerAppMode"]; ok {
+		m.SubHappPerAppMode = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subHappPerAppList"]; ok {
+		m.SubHappPerAppList = types.StringValue(stringValue(v))
 	}
 	if v, ok := in["subListen"]; ok {
 		m.SubListen = types.StringValue(stringValue(v))
@@ -1298,6 +1676,7 @@ type PanelGeneralModel struct {
 	OutboundDownThreshold       types.Int64  `tfsdk:"outbound_down_threshold"`
 	RestartXrayOnClientDisable  types.Bool   `tfsdk:"restart_xray_on_client_disable"`
 	IPLimitAllowlist            types.String `tfsdk:"ip_limit_allowlist"`
+	RealityScanCandidates       types.String `tfsdk:"reality_scan_candidates"`
 	LDAPEnable                  types.Bool   `tfsdk:"ldap_enable"`
 	LDAPHost                    types.String `tfsdk:"ldap_host"`
 	LDAPPort                    types.Int64  `tfsdk:"ldap_port"`
@@ -1435,6 +1814,15 @@ func panelGeneralSchema() schema.Schema {
 				Description: "Comma-separated addresses or CIDRs exempt from the per-client IP limit. " +
 					"3x-ui v3.7.0+; older panels report an empty string (unsupported).",
 				Validators: addrOrPrefixListValidators(),
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"reality_scan_candidates": schema.StringAttribute{
+				Optional: true,
+				Computed: true,
+				Description: "REALITY target scan candidates (comma-separated host:port entries the panel scans when picking a dest). " +
+					"3x-ui v3.8.0+; older panels report an empty string (unsupported).",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
@@ -1631,6 +2019,9 @@ func expandPanelGeneral(m *PanelGeneralModel) map[string]any {
 	if !m.IPLimitAllowlist.IsNull() && !m.IPLimitAllowlist.IsUnknown() {
 		payload["ipLimitAllowlist"] = m.IPLimitAllowlist.ValueString()
 	}
+	if !m.RealityScanCandidates.IsNull() && !m.RealityScanCandidates.IsUnknown() {
+		payload["realityScanCandidates"] = m.RealityScanCandidates.ValueString()
+	}
 	if !m.LDAPEnable.IsNull() && !m.LDAPEnable.IsUnknown() {
 		payload["ldapEnable"] = m.LDAPEnable.ValueBool()
 	}
@@ -1771,6 +2162,9 @@ func flattenPanelGeneral(in map[string]any) *PanelGeneralModel {
 	}
 	if v, ok := in["ipLimitAllowlist"]; ok {
 		m.IPLimitAllowlist = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["realityScanCandidates"]; ok {
+		m.RealityScanCandidates = types.StringValue(stringValue(v))
 	}
 	if v, ok := in["ldapEnable"]; ok {
 		m.LDAPEnable = types.BoolValue(boolValue(v))
@@ -3324,6 +3718,41 @@ func panelSettingsNeedRestart(existing, desired map[string]any) bool {
 		"subRoutingRules",
 		"subIncyEnableRouting",
 		"subIncyRoutingRules",
+		// v3.8.0 additions frozen by (*sub.Server).initRouter():
+		// subProfileMode decides whether the profile-page route is registered
+		// at all (sub.go:197), subJsonRoutingRules/subJsonDns are baked into
+		// the JSON-subscription controller (sub.go:153-161), and the whole
+		// Happ customization block is captured into happCfg (sub.go:233-256).
+		// The per-request exceptions (NOT here): subCalendarExpireInclusive
+		// (PrepareForRequest, service.go:116), subInfoNodeEnable and the
+		// expired/depleted templates (loadRemarkSettings, service.go:251-257),
+		// happLinkEnable (HappService gate, web/service/happ.go:89).
+		"subProfileMode",
+		"subJsonRoutingRules",
+		"subJsonDns",
+		"subHappAutoDetect",
+		"subHappProviderId",
+		"subHappNewUrl",
+		"subHappFallbackUrl",
+		"subHappSubInfoColor",
+		"subHappSubInfoText",
+		"subHappSubInfoButtonText",
+		"subHappSubInfoButtonLink",
+		"subHappSubExpire",
+		"subHappSubExpireButtonLink",
+		"subHappNotificationExpire",
+		"subHappNoLimit",
+		"subHappAlwaysHwid",
+		"subHappTunMode",
+		"subHappTunType",
+		"subHappExcludeRoutes",
+		"subHappExcludeApns",
+		"subHappColorProfile",
+		"subHappPingType",
+		"subHappAutoConnect",
+		"subHappAutoConnectType",
+		"subHappPerAppMode",
+		"subHappPerAppList",
 	}
 	for _, key := range restartKeys {
 		newVal, ok := desired[key]
