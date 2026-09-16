@@ -424,8 +424,90 @@ func expandTLSSettings(list []any) map[string]any {
 	if v, ok := item["cipher"].(string); ok && v != "" {
 		out["cipher"] = v
 	}
+	if v, ok := item["certificates"].([]any); ok {
+		out["certificates"] = expandTLSCertificates(v)
+	}
 	if len(out) == 0 {
 		return nil
+	}
+	return out
+}
+
+// expandTLSCertificates converts untyped snake_case certificate entries into
+// the camelCase tlsSettings.certificates[] wire shape (certificateFile, keyFile,
+// certificate, key, ocspStapling, oneTimeLoading, buildChain, usage).
+func expandTLSCertificates(list []any) []any {
+	out := make([]any, 0, len(list))
+	for _, item := range list {
+		entry, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		wire := map[string]any{}
+		if v, ok := entry["certificate_file"].(string); ok && v != "" {
+			wire["certificateFile"] = v
+		}
+		if v, ok := entry["key_file"].(string); ok && v != "" {
+			wire["keyFile"] = v
+		}
+		if v, ok := entry["certificate"].([]any); ok {
+			wire["certificate"] = expandStringList(v)
+		}
+		if v, ok := entry["key"].([]any); ok {
+			wire["key"] = expandStringList(v)
+		}
+		if v, ok := entry["ocsp_stapling"]; ok {
+			wire["ocspStapling"] = intValue(v)
+		}
+		if v, ok := entry["one_time_loading"].(bool); ok {
+			wire["oneTimeLoading"] = v
+		}
+		if v, ok := entry["build_chain"].(bool); ok {
+			wire["buildChain"] = v
+		}
+		if v, ok := entry["usage"].(string); ok && v != "" {
+			wire["usage"] = v
+		}
+		out = append(out, wire)
+	}
+	return out
+}
+
+// flattenTLSCertificates converts the camelCase wire shape back into untyped
+// snake_case entries for the typed model layer.
+func flattenTLSCertificates(list []any) []any {
+	out := make([]any, 0, len(list))
+	for _, item := range list {
+		entry, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		flat := map[string]any{}
+		if v, ok := entry["certificateFile"].(string); ok && v != "" {
+			flat["certificate_file"] = v
+		}
+		if v, ok := entry["keyFile"].(string); ok && v != "" {
+			flat["key_file"] = v
+		}
+		if v, ok := entry["certificate"].([]any); ok {
+			flat["certificate"] = v
+		}
+		if v, ok := entry["key"].([]any); ok {
+			flat["key"] = v
+		}
+		if v, ok := entry["ocspStapling"]; ok {
+			flat["ocsp_stapling"] = v
+		}
+		if v, ok := entry["oneTimeLoading"].(bool); ok {
+			flat["one_time_loading"] = v
+		}
+		if v, ok := entry["buildChain"].(bool); ok {
+			flat["build_chain"] = v
+		}
+		if v, ok := entry["usage"].(string); ok && v != "" {
+			flat["usage"] = v
+		}
+		out = append(out, flat)
 	}
 	return out
 }
@@ -455,6 +537,9 @@ func flattenTLSSettings(in map[string]any) map[string]any {
 	}
 	if v, ok := in["cipher"].(string); ok {
 		out["cipher"] = v
+	}
+	if v, ok := in["certificates"].([]any); ok {
+		out["certificates"] = flattenTLSCertificates(v)
 	}
 	return out
 }
