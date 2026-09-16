@@ -14,6 +14,7 @@
     "3x-ui-3.5.0",
     "3x-ui-3.6.0",
     "3x-ui-3.7.0",
+    "3x-ui-3.8.5",
     ".cache",
     ".claude",
     ".git",
@@ -30,6 +31,6 @@
     "Resources/data sources are built with terraform-plugin-framework (not SDKv2). Schema helpers live in provider/<area>_schema.go.",
     "JSON string fields (settings, stream_settings, sniffing) convert through three layers: typed model (types.String/Int64/Bool) <-> untyped map <-> JSON string. See provider/settings.go and provider/stream_settings.go.",
     "The 3x-ui-<version>/ directories are read-only upstream source snapshots used only to verify API/struct truth for drift tests. Never cite their code as the provider's own API.",
-    "Supported 3x-ui versions: v3.2.x, v3.3.x, v3.4.x, v3.5.x, v3.6.x, v3.7.x (up to v3.7.0). Version-specific features are gated with requireMinVersion in acceptance tests."
+    "Supported 3x-ui versions: v3.3.x, v3.4.x, v3.5.x, v3.6.x, v3.7.x, v3.8.x (up to v3.8.5). Version-specific features are gated with requireMinVersion in acceptance tests."
   ]
 }

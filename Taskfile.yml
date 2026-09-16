@@ -27,7 +27,7 @@ tasks:
     vars:
       TERRAFORM_PATH:
         sh: which terraform
-      THREEXUI_VERSION: '{{.THREEXUI_VERSION | default "v3.7.0"}}'
+      THREEXUI_VERSION: '{{.THREEXUI_VERSION | default "v3.8.5"}}'
     cmds:
       - docker compose down -v 2>/dev/null || true
       - defer: docker compose down
@@ -56,7 +56,7 @@ tasks:
     vars:
       TERRAFORM_PATH:
         sh: which terraform
-      THREEXUI_VERSION: '{{.THREEXUI_VERSION | default "v3.7.0"}}'
+      THREEXUI_VERSION: '{{.THREEXUI_VERSION | default "v3.8.5"}}'
     cmds:
       - echo "Running tests against 3x-ui {{.THREEXUI_VERSION}} at http://localhost:2053"
       - docker compose down -v 2>/dev/null || true
@@ -86,7 +86,7 @@ tasks:
     vars:
       TERRAFORM_PATH:
         sh: which terraform
-      THREEXUI_VERSION: '{{.THREEXUI_VERSION | default "v3.7.0"}}'
+      THREEXUI_VERSION: '{{.THREEXUI_VERSION | default "v3.8.5"}}'
     cmds:
       - docker compose down -v 2>/dev/null || true
       - defer: docker compose --profile postgres down -v

@@ -11,13 +11,15 @@ The 3x-ui panel evolves quickly, and some releases introduce breaking API change
 
 ## Support policy
 
-The provider officially supports every released patch across all supported 3x-ui minor lines — see the compatibility table in the README. The acceptance matrix exercises each version on each push to `main` and every pull request. Older lines (2.9.x, 3.0.x and earlier) were dropped from the test matrix in provider v3.4.0; 3.1.x was dropped when 3.7.x was added.
+The provider officially supports every released patch across all supported 3x-ui minor lines — see the compatibility table in the README. The acceptance matrix exercises each version on each push to `main` and every pull request. Older lines (2.9.x, 3.0.x and earlier) were dropped from the test matrix in provider v3.4.0; 3.1.x was dropped when 3.7.x was added; 3.2.x was dropped when 3.8.x was added.
 
 ## Compatibility table
 
 <!-- sync-versions:begin -->
 | 3x-ui version | Status | Notes |
 | --- | --- | --- |
+| v3.8.5 | Tested | Rebuilt subscription page; Xray survives a bad config (port-collision saves and enables are refused); large-fleet node sync; empty REALITY `min_client_ver` now means no minimum (xray-core v26.9.9). |
+| v3.8.0 | Tested | TUIC v5 inbounds, AmneziaWG outbounds, a Discord notification bot (10 `discord*` settings), Happ client customization (`subHapp*`), `sub_profile_mode`, xray-core v26.9.9 with one-time template migrations, and hardened installs. |
 | v3.7.0 | Tested | Native AmneziaWG inbounds, calendar-day client renewals with a per-client traffic reset cycle, inbound `disable_flow`, an IP-limit allowlist, and scoped API tokens. |
 | v3.6.0 | Tested | Node `apiToken` becomes write-only ([3x-ui #5613](https://github.com/MHSanaei/3x-ui/pull/5613)); xray-core v26.7.28. |
 | v3.5.0 | Tested | Host groups, MTProto multi-client support, Xray `env`, outbound `target_strategy`, and expanded balancer settings. |
@@ -26,14 +28,9 @@ The provider officially supports every released patch across all supported 3x-ui
 | v3.4.0 | Tested | SMTP notifications and expanded Telegram/subscription settings. |
 | v3.3.1 | Tested | Live config apply; `panelProxy` replaced by the `panelOutbound` egress bridge. |
 | v3.3.0 | Tested | `subThemeDir`, `warpUpdateInterval`, MTProto, and the node-sync surface. |
-| v3.2.8 | Tested | Latest supported v3.2.x patch. |
-| v3.2.7 | Tested | TUN inbound alias. |
-| v3.2.6 | Tested | |
-| v3.2.5 | Tested | |
-| v3.2.0 | Tested | `mixed`/`tunnel` replace legacy `socks`/`dokodemo-door`; client `group` and `panelProxy` are available. |
 <!-- sync-versions:end -->
 
-Older lines (3.1.x, 3.0.x, 2.9.x and earlier) are no longer tested. The provider may still work, but compatibility is not guaranteed.
+Older lines (3.2.x, 3.1.x, 3.0.x, 2.9.x and earlier) are no longer tested. The provider may still work, but compatibility is not guaranteed.
 
 ## Known issues
 
@@ -118,9 +115,9 @@ Current version gates:
 - **v2.9.4+**: outbound `final_rule` and VLESS `reverse_tag`.
 - **v3.0.0+**: CSRF-protected unsafe requests, inbound `nodeId`, multi-node surface, API token endpoint.
 - **v3.0.2+**: tunnel `rewrite_address`, `rewrite_port`, and `allowed_network`; default trusted proxy CIDRs; subscription email-in-remark default.
-- **v3.2.0+** (matrix floor): the client API surface the provider auto-detects; `mixed`/`tunnel` replace legacy `socks`/`dokodemo-door`; client `group` and panel `panel_proxy` are available.
+- **v3.2.0+**: the client API surface the provider auto-detects; `mixed`/`tunnel` replace legacy `socks`/`dokodemo-door`; client `group` and panel `panel_proxy` are available.
 - **v3.2.7+**: `tun` is available as an alias for the tunnel inbound.
-- **v3.3.0+**: `subThemeDir` and `warpUpdateInterval` settings; node-sync multi-node surface.
+- **v3.3.0+** (matrix floor): `subThemeDir` and `warpUpdateInterval` settings; node-sync multi-node surface.
 - **v3.3.1+**: inbound `subSortIndex`, `shareAddr`/`shareAddrStrategy`; `panelProxy` renamed to `panelOutbound` (outbound egress bridge).
 - **v3.4.0+**: SMTP notifications; expanded Telegram and subscription settings.
 - **v3.4.1+**: Incy client routing injection in subscription output.
@@ -129,7 +126,7 @@ Current version gates:
 - **v3.6.0+**: inbound `traffic_reset_day`, SMTP `From` header, subscription format auto-detection, and node `api_token_wo`.
 - **v3.7.0+**: inbound `disable_flow`, per-client calendar renewals (`reset_day`, `reset_max`) and traffic reset cycle (`traffic_reset`, `traffic_reset_day`), panel `ip_limit_allowlist`, and subscription `sub_json_observatory`.
 
-Tests without `requireMinVersion` run on all supported versions (v3.2.0+).
+Tests without `requireMinVersion` run on all supported versions (v3.3.0+).
 
 ## Selecting a 3x-ui version
 
@@ -137,13 +134,13 @@ The provider communicates with whatever 3x-ui version is running on your host. T
 
 ```bash
 # Set the 3x-ui image tag
-export THREEXUI_VERSION=v3.7.0
+export THREEXUI_VERSION=v3.8.5
 
 # Start the container
 docker compose up -d
 ```
 
-In `docker-compose.yaml`, the image tag is parameterized via `${THREEXUI_VERSION:-v3.7.0}`, so omitting the variable defaults to the latest tested version.
+In `docker-compose.yaml`, the image tag is parameterized via `${THREEXUI_VERSION:-v3.8.5}`, so omitting the variable defaults to the latest tested version.
 
 For the Terraform provider itself, use the latest release from the [Terraform Registry](https://registry.terraform.io/providers/batonogov/threexui). The single provider binary supports all 3x-ui versions listed in the compatibility table above.
 

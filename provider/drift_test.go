@@ -632,7 +632,9 @@ func TestDriftInboundProtocols_GoModel(t *testing.T) {
 	}
 
 	upstreamSet := toSet(upstream)
-	upstreamSkipped := map[string]bool{}
+	// "tuic" (v3.8.0, TUIC v5) is terminated by a bundled tuic-server sidecar
+	// rather than xray-core; provider support is tracked separately.
+	upstreamSkipped := map[string]bool{"tuic": true}
 	checkMissing(t, upstream, providerHandled, upstreamSkipped,
 		"upstream model.go has protocols not handled by provider: %v")
 	checkRemoved(t, providerHandled, upstreamSet, providerExtras,
@@ -670,7 +672,8 @@ func TestDriftInboundProtocols_JS(t *testing.T) {
 	}
 
 	upstreamSet := toSet(upstream)
-	upstreamSkipped := map[string]bool{}
+	// "tuic" (v3.8.0, TUIC v5 sidecar) — see TestDriftInboundProtocols_GoModel.
+	upstreamSkipped := map[string]bool{"tuic": true}
 	checkMissing(t, upstream, providerHandled, upstreamSkipped,
 		"upstream inbound.js Protocols has entries not handled by provider: %v")
 	checkRemoved(t, providerHandled, upstreamSet, providerExtras,
@@ -708,7 +711,8 @@ func TestDriftProtocolForms(t *testing.T) {
 	}
 
 	upstreamSet := toSet(upstream)
-	upstreamSkipped := map[string]bool{}
+	// "tuic" (v3.8.0, TUIC v5 sidecar) — see TestDriftInboundProtocols_GoModel.
+	upstreamSkipped := map[string]bool{"tuic": true}
 	checkMissing(t, upstream, providerBlocks, upstreamSkipped,
 		"upstream protocol form files not handled by provider: %v")
 	checkRemoved(t, providerBlocks, upstreamSet, providerExtras,
@@ -948,6 +952,42 @@ func TestDriftAllSettingFields(t *testing.T) {
 		// The provider keeps panelProxy for backward compat with v3.2.0–v3.3.0
 		// panels even though v3.3.1's AllSetting struct dropped it.
 		"panelProxy": true,
+
+		// v3.8.0 additions — not yet managed by a provider resource:
+		// Discord notification bot (own settings tab, mirrors the Telegram bot;
+		// discordBotToken is sensitive). Tracked for a threexui_panel_discord
+		// resource.
+		"discordBotEnable": true, "discordBotToken": true,
+		"discordChannelId": true, "discordAdminIds": true,
+		"discordRunTime": true, "discordBotBackup": true,
+		"discordCpu": true, "discordMemory": true,
+		"discordLang": true, "discordEnabledEvents": true,
+		// v3.8.0 Happ client customization (app-management / routing / UX).
+		"happLinkEnable":    true,
+		"subHappAutoDetect": true, "subHappProviderId": true,
+		"subHappNewUrl": true, "subHappFallbackUrl": true,
+		"subHappSubInfoColor": true, "subHappSubInfoText": true,
+		"subHappSubInfoButtonText": true, "subHappSubInfoButtonLink": true,
+		"subHappSubExpire": true, "subHappSubExpireButtonLink": true,
+		"subHappNotificationExpire": true, "subHappNoLimit": true,
+		"subHappAlwaysHwid": true, "subHappTunMode": true,
+		"subHappTunType": true, "subHappExcludeRoutes": true,
+		"subHappExcludeApns": true, "subHappColorProfile": true,
+		"subHappPingType": true, "subHappAutoConnect": true,
+		"subHappAutoConnectType": true, "subHappPerAppMode": true,
+		"subHappPerAppList": true,
+		// v3.8.0/v3.8.5 subscription page + JSON subscription additions:
+		// subProfileMode (None/Built-in/Custom, replaces the always-on built-in
+		// profile page of subProfileUrl, 3x-ui #6538), the dummy info/status
+		// node switch, month-end expiry display, per-state page templates, and
+		// client routing profiles/DNS baked into JSON subscriptions.
+		"subProfileMode": true, "subInfoNodeEnable": true,
+		"subCalendarExpireInclusive": true, "subExpiredTemplate": true,
+		"subTrafficDepletedTemplate": true,
+		"subJsonRoutingRules":        true, "subJsonDns": true,
+		// v3.8.0 panel_general: configurable REALITY scan candidates
+		// (dest list the panel scans when picking a target).
+		"realityScanCandidates": true,
 	}
 
 	dir := latestSnapshotDir(t)

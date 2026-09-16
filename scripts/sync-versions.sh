@@ -167,6 +167,8 @@ check_readme() {
 # ---------------------------------------------------------------------------
 get_version_guide_note() {
   case "$1" in
+    v3.8.5) echo 'Rebuilt subscription page; Xray survives a bad config (port-collision saves and enables are refused); large-fleet node sync; empty REALITY `min_client_ver` now means no minimum (xray-core v26.9.9).' ;;
+    v3.8.0) echo 'TUIC v5 inbounds, AmneziaWG outbounds, a Discord notification bot (10 `discord*` settings), Happ client customization (`subHapp*`), `sub_profile_mode`, xray-core v26.9.9 with one-time template migrations, and hardened installs.' ;;
     v3.7.0) echo 'Native AmneziaWG inbounds, calendar-day client renewals with a per-client traffic reset cycle, inbound `disable_flow`, an IP-limit allowlist, and scoped API tokens.' ;;
     v3.6.0) echo 'Node `apiToken` becomes write-only ([3x-ui #5613](https://github.com/MHSanaei/3x-ui/pull/5613)); xray-core v26.7.28.' ;;
     v3.5.0) echo 'Host groups, MTProto multi-client support, Xray `env`, outbound `target_strategy`, and expanded balancer settings.' ;;
@@ -175,9 +177,6 @@ get_version_guide_note() {
     v3.4.0) echo 'SMTP notifications and expanded Telegram/subscription settings.' ;;
     v3.3.1) echo 'Live config apply; `panelProxy` replaced by the `panelOutbound` egress bridge.' ;;
     v3.3.0) echo '`subThemeDir`, `warpUpdateInterval`, MTProto, and the node-sync surface.' ;;
-    v3.2.8) echo 'Latest supported v3.2.x patch.' ;;
-    v3.2.7) echo 'TUN inbound alias.' ;;
-    v3.2.0) echo '`mixed`/`tunnel` replace legacy `socks`/`dokodemo-door`; client `group` and `panelProxy` are available.' ;;
     *) echo '' ;;
   esac
 }

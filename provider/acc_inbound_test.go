@@ -181,7 +181,7 @@ resource "threexui_inbound" "wg" {
 // --- Dokodemo-door (tunnel) ---
 
 func TestAccInboundDokodemo(t *testing.T) {
-	// dokodemo-door renamed to "tunnel" in v3.2.0. v3.2.0 is the oldest version in
+	// dokodemo-door renamed to "tunnel" in v3.2.0. v3.3.0 is the oldest version in
 	// the CI matrix, so this always skips there — it only runs when a panel older
 	// than v3.2.0 is pointed at manually via THREEXUI_VERSION.
 	requireBelowVersion(t, "v3.2.0")
@@ -1180,7 +1180,6 @@ resource "threexui_inbound" "hysteria" {
 
   stream_settings {
     network  = "hysteria"
-    security = "tls"
   }
 }
 `,
