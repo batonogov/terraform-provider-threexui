@@ -1257,9 +1257,9 @@ func restorePanelGeneralAfterBasePathChange(ctx context.Context, client *Client,
 
 // TestAccPanelSubscription_v328 verifies that v3.2.8 subscription fields
 // (sub_clash_enable_routing, sub_clash_rules, sub_json_final_mask) round-trip
-// through the 3x-ui API. Skipped on versions below v3.2.8.
+// through the 3x-ui API. Runs on every supported version (v3.2.8 predates the
+// matrix floor), so no requireMinVersion gate is needed.
 func TestAccPanelSubscription_v328(t *testing.T) {
-	requireMinVersion(t, "v3.2.8")
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories(),
