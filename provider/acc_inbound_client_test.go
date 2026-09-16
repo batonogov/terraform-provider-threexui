@@ -621,7 +621,6 @@ resource "threexui_inbound" "hysteria_host" {
 
   stream_settings {
     network  = "hysteria"
-    security = "tls"
   }
 }
 

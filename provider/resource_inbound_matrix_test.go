@@ -898,7 +898,6 @@ resource "threexui_inbound" "mx_hysteria" {
   }
   stream_settings {
     network  = "hysteria"
-    security = "tls"
   }
 }
 `, port)
@@ -915,7 +914,6 @@ resource "threexui_inbound" "mx_hysteria" {
   }
   stream_settings {
     network  = "hysteria"
-    security = "tls"
   }
   sniffing {
     enabled       = true
