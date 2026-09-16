@@ -151,6 +151,7 @@ resource "threexui_inbound_client" "client_a" {
 | `threexui_panel_user` | 管理员凭据 |
 | `threexui_panel_telegram` | Telegram bot 集成 |
 | `threexui_panel_email` | SMTP/email 通知 (v3.4.0+) |
+| `threexui_panel_discord` | Discord 机器人通知 (v3.8.0+) |
 | `threexui_host_group` | 主机组路由（每个 inbound 可有多个主机） |
 | `threexui_panel_subscription` | 订阅服务设置 |
 | `threexui_xray_basics` | Xray 基础配置(log、policy、api、stats) |

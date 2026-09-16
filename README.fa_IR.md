@@ -157,6 +157,7 @@ resource "threexui_inbound_client" "client_a" {
 | `threexui_panel_user` | اعتبارنامه‌های ادمین |
 | `threexui_panel_telegram` | یکپارچه‌سازی با بات تلگرام |
 | `threexui_panel_email` | اعلان‌های SMTP/email (v3.4.0+) |
+| `threexui_panel_discord` | اعلان‌های بات Discord (v3.8.0+) |
 | `threexui_host_group` | مسیریابی گروه هاست‌ها (چند هاست برای هر اینباند) |
 | `threexui_panel_subscription` | تنظیمات سرویس subscription |
 | `threexui_xray_basics` | پیکربندی پایهٔ Xray (log, policy, api, stats) |

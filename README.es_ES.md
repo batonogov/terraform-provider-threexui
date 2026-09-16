@@ -151,6 +151,7 @@ La documentación completa está en el [Terraform Registry](https://registry.ter
 | `threexui_panel_user` | Credenciales de administrador |
 | `threexui_panel_telegram` | Integración con bot de Telegram |
 | `threexui_panel_email` | Notificaciones SMTP/email (v3.4.0+) |
+| `threexui_panel_discord` | Notificaciones del bot de Discord (v3.8.0+) |
 | `threexui_host_group` | Enrutamiento de grupos de hosts (varios hosts por inbound) |
 | `threexui_panel_subscription` | Ajustes del servicio de suscripción |
 | `threexui_xray_basics` | Configuración base de Xray (log, policy, api, stats) |

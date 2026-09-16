@@ -1373,3 +1373,219 @@ func TestAddrOrPrefixListValidator(t *testing.T) {
 		}
 	}
 }
+
+// --- panel_discord (3x-ui v3.8.0+) ---
+
+// TestPanelDiscordSchemaAttributeShape asserts the discord secret attribute
+// trio exists with the expected shape, and exercises panelDiscordSchema() so
+// the schema literal counts towards unit coverage.
+func TestPanelDiscordSchemaAttributeShape(t *testing.T) {
+	s := panelDiscordSchema()
+	token, ok := s.Attributes["discord_bot_token"].(schema.StringAttribute)
+	if !ok {
+		t.Fatal("discord_bot_token missing or not a StringAttribute")
+	}
+	if !token.Optional || !token.Computed || !token.Sensitive {
+		t.Error("discord_bot_token must be Optional+Computed+Sensitive")
+	}
+	wo, ok := s.Attributes["discord_bot_token_wo"].(schema.StringAttribute)
+	if !ok {
+		t.Fatal("discord_bot_token_wo missing or not a StringAttribute")
+	}
+	if !wo.WriteOnly {
+		t.Error("discord_bot_token_wo must be WriteOnly")
+	}
+	for _, name := range []string{"discord_cpu", "discord_memory"} {
+		attr, ok := s.Attributes[name].(schema.Int64Attribute)
+		if !ok {
+			t.Fatalf("%s missing or not an Int64Attribute", name)
+		}
+		if len(attr.Validators) == 0 {
+			t.Errorf("%s must carry the panel's 0-100 validator", name)
+		}
+	}
+	for _, name := range []string{
+		"discord_bot_enable", "discord_channel_id", "discord_admin_ids",
+		"discord_run_time", "discord_bot_backup", "discord_lang",
+		"discord_enabled_events",
+	} {
+		if _, ok := s.Attributes[name]; !ok {
+			t.Errorf("attribute %q missing on panel_discord schema", name)
+		}
+	}
+}
+
+// TestPanelDiscordExpandFlatten round-trips every managed discord key through
+// expand/flatten, including the write-only token precedence.
+func TestPanelDiscordExpandFlatten(t *testing.T) {
+	m := &PanelDiscordModel{
+		DiscordBotEnable:     types.BoolValue(true),
+		DiscordBotToken:      types.StringValue("plain-token"),
+		DiscordChannelID:     types.StringValue("1234567890"),
+		DiscordAdminIDs:      types.StringValue("111,222"),
+		DiscordRunTime:       types.StringValue("@daily"),
+		DiscordBotBackup:     types.BoolValue(true),
+		DiscordCPU:           types.Int64Value(80),
+		DiscordMemory:        types.Int64Value(90),
+		DiscordLang:          types.StringValue("en-US"),
+		DiscordEnabledEvents: types.StringValue("login,backup,cpu.high"),
+	}
+	out := expandPanelDiscord(m)
+	want := map[string]any{
+		"discordBotEnable":     true,
+		"discordBotToken":      "plain-token",
+		"discordChannelId":     "1234567890",
+		"discordAdminIds":      "111,222",
+		"discordRunTime":       "@daily",
+		"discordBotBackup":     true,
+		"discordCpu":           80,
+		"discordMemory":        90,
+		"discordLang":          "en-US",
+		"discordEnabledEvents": "login,backup,cpu.high",
+	}
+	if len(out) != len(want) {
+		t.Fatalf("expand produced %d keys, want %d: %v", len(out), len(want), out)
+	}
+	for k, v := range want {
+		got, ok := out[k]
+		if !ok {
+			t.Fatalf("expand missing key %q", k)
+		}
+		if got != v {
+			t.Errorf("expand[%q] = %v (%T), want %v (%T)", k, got, got, v, v)
+		}
+	}
+
+	back := flattenPanelDiscord(out)
+	if back.ID.ValueString() != "settings" {
+		t.Errorf("flatten id = %q, want settings", back.ID.ValueString())
+	}
+	if !back.DiscordBotEnable.ValueBool() {
+		t.Error("flatten discord_bot_enable")
+	}
+	if back.DiscordBotToken.ValueString() != "plain-token" {
+		t.Error("flatten discord_bot_token")
+	}
+	if back.DiscordCPU.ValueInt64() != 80 || back.DiscordMemory.ValueInt64() != 90 {
+		t.Error("flatten thresholds")
+	}
+	if back.DiscordEnabledEvents.ValueString() != want["discordEnabledEvents"] {
+		t.Error("flatten discord_enabled_events")
+	}
+
+	// The write-only token wins over the plain attribute when both are set
+	// (mirrors expandPanelTelegram).
+	m.DiscordBotTokenWO = types.StringValue("wo-token")
+	if got := expandPanelDiscord(m)["discordBotToken"]; got != "wo-token" {
+		t.Errorf("expand with _wo set = %v, want wo-token", got)
+	}
+
+	// A redacted/blank token from /setting/all on v3.8.x must survive
+	// round-trip without inventing state.
+	blank := flattenPanelDiscord(map[string]any{"discordBotToken": ""})
+	if blank.DiscordBotToken.ValueString() != "" {
+		t.Errorf("flatten must surface the blank token as an empty string, got %q", blank.DiscordBotToken.ValueString())
+	}
+}
+
+// TestResolveDiscordTokenWO mirrors the telegram write-only resolution:
+// create copies the _wo value unconditionally, update only when the version
+// trigger moved.
+func TestResolveDiscordTokenWO(t *testing.T) {
+	plan := &PanelDiscordModel{DiscordBotToken: types.StringValue("old")}
+	config := PanelDiscordModel{DiscordBotTokenWO: types.StringValue("wo")}
+	resolveDiscordTokenWO(plan, config)
+	if plan.DiscordBotToken.ValueString() != "wo" {
+		t.Errorf("create: token = %q, want wo", plan.DiscordBotToken.ValueString())
+	}
+
+	// Update with unchanged version: keep the planned value.
+	plan = &PanelDiscordModel{
+		DiscordBotToken:      types.StringValue("planned"),
+		DiscordBotTokenWOVer: types.Int64Value(3),
+	}
+	state := PanelDiscordModel{DiscordBotTokenWOVer: types.Int64Value(3)}
+	resolveDiscordTokenWOUpdate(plan, state, config)
+	if plan.DiscordBotToken.ValueString() != "planned" {
+		t.Errorf("update without version bump: token = %q, want planned", plan.DiscordBotToken.ValueString())
+	}
+
+	// Update with a version bump: copy the _wo value.
+	state.DiscordBotTokenWOVer = types.Int64Value(2)
+	resolveDiscordTokenWOUpdate(plan, state, config)
+	if plan.DiscordBotToken.ValueString() != "wo" {
+		t.Errorf("update with version bump: token = %q, want wo", plan.DiscordBotToken.ValueString())
+	}
+
+	// First use on existing state without a version: treated as a change.
+	plan = &PanelDiscordModel{
+		DiscordBotToken:      types.StringValue("planned"),
+		DiscordBotTokenWOVer: types.Int64Value(1),
+	}
+	resolveDiscordTokenWOUpdate(plan, PanelDiscordModel{}, config)
+	if plan.DiscordBotToken.ValueString() != "wo" {
+		t.Errorf("first _wo use: token = %q, want wo", plan.DiscordBotToken.ValueString())
+	}
+}
+
+// TestPanelSettingsNeedRestart_DiscordKeys pins the discord restart surface:
+// the notify cron and gateway hot-reload in-process (3x-ui v3.8.0+
+// controller/setting.go:182-189 → web.go:693-719), so only the keys feeding
+// startup-only alarm sampler registration restart — plus discordBotEnable,
+// because cpuAlarmWanted()/memoryAlarmWanted() read it once at boot
+// (web.go:478-482) and the reload func never re-checks alarm registration.
+func TestPanelSettingsNeedRestart_DiscordKeys(t *testing.T) {
+	// Hot-reloaded keys: schedule, credentials, per-delivery settings.
+	for key, change := range map[string][2]any{
+		"discordRunTime":   {"@daily", "@every 6h"},
+		"discordBotToken":  {"old", "new"},
+		"discordChannelId": {"1", "2"},
+		"discordAdminIds":  {"111", "222"},
+		"discordLang":      {"en-US", "fa-IR"},
+		"discordBotBackup": {false, true},
+	} {
+		if panelSettingsNeedRestart(map[string]any{key: change[0]}, map[string]any{key: change[1]}) {
+			t.Errorf("%s is hot-reloaded by reloadDiscordFunc and must not restart the panel", key)
+		}
+	}
+
+	// Enable flip restarts (alarm sampler registration reads it at startup).
+	if !panelSettingsNeedRestart(
+		map[string]any{"discordBotEnable": false},
+		map[string]any{"discordBotEnable": true},
+	) {
+		t.Error("discordBotEnable flip must restart")
+	}
+
+	// Thresholds only matter when they cross zero.
+	if !panelSettingsNeedRestart(map[string]any{"discordCpu": float64(0)}, map[string]any{"discordCpu": 80}) {
+		t.Error("discordCpu 0 → 80 must restart")
+	}
+	if panelSettingsNeedRestart(map[string]any{"discordCpu": float64(80)}, map[string]any{"discordCpu": 90}) {
+		t.Error("discordCpu 80 → 90 must not restart")
+	}
+
+	// Event lists only matter for cpu.high / memory.high membership.
+	if !panelSettingsNeedRestart(
+		map[string]any{"discordEnabledEvents": "login,cpu.high"},
+		map[string]any{"discordEnabledEvents": "login"},
+	) {
+		t.Error("dropping cpu.high from discordEnabledEvents must restart")
+	}
+	if panelSettingsNeedRestart(
+		map[string]any{"discordEnabledEvents": "login,cpu.high"},
+		map[string]any{"discordEnabledEvents": "login,backup,cpu.high"},
+	) {
+		t.Error("adding an unrelated discord event must not restart")
+	}
+
+	// On panels older than v3.8.0 the keys do not exist at all: never restart.
+	old := map[string]any{"webPort": float64(2053)}
+	desired := map[string]any{
+		"discordBotEnable": true, "discordRunTime": "@daily",
+		"discordCpu": 80, "discordEnabledEvents": "cpu.high",
+	}
+	if panelSettingsNeedRestart(old, desired) {
+		t.Error("keys unknown to the panel must never restart")
+	}
+}

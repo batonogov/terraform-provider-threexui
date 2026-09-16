@@ -151,6 +151,7 @@ Tam belgeler [Terraform Registry](https://registry.terraform.io/providers/batono
 | `threexui_panel_user` | Yönetici kimlik bilgileri |
 | `threexui_panel_telegram` | Telegram bot entegrasyonu |
 | `threexui_panel_email` | SMTP/email bildirimleri (v3.4.0+) |
+| `threexui_panel_discord` | Discord bot bildirimleri (v3.8.0+) |
 | `threexui_host_group` | Host grubu yönlendirmesi (inbound başına birden fazla host) |
 | `threexui_panel_subscription` | Abonelik hizmeti ayarları |
 | `threexui_xray_basics` | Temel Xray yapılandırması (log, policy, api, stats) |

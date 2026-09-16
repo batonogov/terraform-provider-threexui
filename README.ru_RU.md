@@ -151,6 +151,7 @@ resource "threexui_inbound_client" "client_a" {
 | `threexui_panel_user` | Учётные данные администратора |
 | `threexui_panel_telegram` | Интеграция с Telegram-ботом |
 | `threexui_panel_email` | SMTP/email-уведомления (v3.4.0+) |
+| `threexui_panel_discord` | Discord-уведомления через бота (v3.8.0+) |
 | `threexui_host_group` | Маршрутизация групп хостов (несколько хостов на инбаунд) |
 | `threexui_panel_subscription` | Настройки подписочного сервиса |
 | `threexui_xray_basics` | Базовый Xray (log, policy, api, stats) |

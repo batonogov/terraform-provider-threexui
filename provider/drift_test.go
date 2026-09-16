@@ -922,6 +922,12 @@ func TestDriftAllSettingFields(t *testing.T) {
 		"smtpUsername": true, "smtpPassword": true, "smtpTo": true,
 		"smtpEncryptionType": true, "smtpEnabledEvents": true,
 		"smtpCpu": true, "smtpMemory": true,
+		// v3.8.0 Discord notification bot (threexui_panel_discord)
+		"discordBotEnable": true, "discordBotToken": true,
+		"discordChannelId": true, "discordAdminIds": true,
+		"discordRunTime": true, "discordBotBackup": true,
+		"discordCpu": true, "discordMemory": true,
+		"discordLang": true, "discordEnabledEvents": true,
 		// v3.6.0 SMTP From header (threexui_panel_email)
 		"smtpFrom": true, "smtpFromName": true,
 		// v3.6.0 subscription format auto-detection (threexui_panel_subscription)
@@ -953,15 +959,6 @@ func TestDriftAllSettingFields(t *testing.T) {
 		// panels even though v3.3.1's AllSetting struct dropped it.
 		"panelProxy": true,
 
-		// v3.8.0 additions — not yet managed by a provider resource:
-		// Discord notification bot (own settings tab, mirrors the Telegram bot;
-		// discordBotToken is sensitive). Tracked for a threexui_panel_discord
-		// resource.
-		"discordBotEnable": true, "discordBotToken": true,
-		"discordChannelId": true, "discordAdminIds": true,
-		"discordRunTime": true, "discordBotBackup": true,
-		"discordCpu": true, "discordMemory": true,
-		"discordLang": true, "discordEnabledEvents": true,
 		// v3.8.0 Happ client customization (app-management / routing / UX).
 		"happLinkEnable":    true,
 		"subHappAutoDetect": true, "subHappProviderId": true,
