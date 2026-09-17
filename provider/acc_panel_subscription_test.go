@@ -304,7 +304,6 @@ resource "threexui_panel_subscription" "test" {
   sub_port         = 2096
   sub_title        = "v38-test"
 
-  sub_profile_mode            = "custom"
   sub_info_node_enable        = true
   sub_calendar_expire_inclusive = false
   sub_expired_template        = "expired {{remark}}"
@@ -321,7 +320,6 @@ resource "threexui_panel_subscription" "test" {
 }`,
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "id", "settings"),
-					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "sub_profile_mode", "custom"),
 					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "sub_info_node_enable", "true"),
 					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "sub_expired_template", "expired {{remark}}"),
 					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "happ_link_enable", "true"),
@@ -339,7 +337,6 @@ resource "threexui_panel_subscription" "test" {
   sub_port         = 2096
   sub_title        = "v38-test"
 
-  sub_profile_mode            = "none"
   sub_info_node_enable        = false
   sub_calendar_expire_inclusive = true
   sub_expired_template        = "expired {{remark}}"
@@ -350,7 +347,7 @@ resource "threexui_panel_subscription" "test" {
   sub_happ_provider_id   = "prov-2"
 }`,
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "sub_profile_mode", "none"),
+					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "sub_info_node_enable", "false"),
 					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "sub_calendar_expire_inclusive", "true"),
 					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "happ_link_enable", "false"),
 					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "sub_happ_provider_id", "prov-2"),
@@ -365,7 +362,6 @@ resource "threexui_panel_subscription" "test" {
   sub_port         = 2096
   sub_title        = "v38-test"
 
-  sub_profile_mode            = "none"
   sub_info_node_enable        = false
   sub_calendar_expire_inclusive = true
   sub_expired_template        = "expired {{remark}}"
@@ -374,6 +370,59 @@ resource "threexui_panel_subscription" "test" {
   happ_link_enable       = false
   sub_happ_auto_detect   = false
   sub_happ_provider_id   = "prov-2"
+}`,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
+// TestAccPanelSubscriptionProfileMode covers sub_profile_mode — the only
+// v3.8-line AllSetting addition that landed in v3.8.5 (upstream #6538 was
+// merged between v3.8.0 and v3.8.5). On v3.8.0 the panel does not know the
+// key at all: gin drops the form value and /setting/all omits it, so the
+// attribute reads back null and cannot round-trip.
+func TestAccPanelSubscriptionProfileMode(t *testing.T) {
+	requireMinVersion(t, "v3.8.5")
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: testAccProviderConfig() + `
+resource "threexui_panel_subscription" "test" {
+  sub_enable       = true
+  sub_path         = "/sub/"
+  sub_port         = 2096
+  sub_title        = "v385-test"
+  sub_profile_mode = "custom"
+}`,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "sub_profile_mode", "custom"),
+				),
+			},
+			{
+				Config: testAccProviderConfig() + `
+resource "threexui_panel_subscription" "test" {
+  sub_enable       = true
+  sub_path         = "/sub/"
+  sub_port         = 2096
+  sub_title        = "v385-test"
+  sub_profile_mode = "none"
+}`,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "sub_profile_mode", "none"),
+				),
+			},
+			{
+				Config: testAccProviderConfig() + `
+resource "threexui_panel_subscription" "test" {
+  sub_enable       = true
+  sub_path         = "/sub/"
+  sub_port         = 2096
+  sub_title        = "v385-test"
+  sub_profile_mode = "none"
 }`,
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: false,

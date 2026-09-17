@@ -77,7 +77,7 @@ func protocolValidators() []validator.String {
 			"vless", "vmess", "trojan", "shadowsocks",
 			"http", "socks", "mixed", "wireguard",
 			"dokodemo-door", "tunnel", "tun",
-			"hysteria", "hysteria2", "mtproto", "amneziawg",
+			"hysteria", "hysteria2", "mtproto", "amneziawg", "tuic",
 		),
 	}
 }

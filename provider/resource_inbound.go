@@ -70,6 +70,7 @@ type InboundResourceModel struct {
 	MixedSettings       *InboundMixedSettingsModel       `tfsdk:"mixed_settings"`
 	WireguardSettings   *InboundWireguardSettingsModel   `tfsdk:"wireguard_settings"`
 	AmneziawgSettings   *InboundAmneziawgSettingsModel   `tfsdk:"amneziawg_settings"`
+	TuicSettings        *InboundTuicSettingsModel        `tfsdk:"tuic_settings"`
 	DokodemoSettings    *InboundDokodemoSettingsModel    `tfsdk:"dokodemo_settings"`
 	HysteriaSettings    *InboundHysteriaSettingsModel    `tfsdk:"hysteria_settings"`
 	MtprotoSettings     *InboundMtprotoSettingsModel     `tfsdk:"mtproto_settings"`
@@ -826,6 +827,9 @@ func alignBlocksWithPlan(state *InboundResourceModel, plan *InboundResourceModel
 		// a block absent from the configuration must stay absent in state, or the
 		// framework reports "was absent, but now present".
 		state.AmneziawgSettings.Server = nil
+	}
+	if plan.TuicSettings == nil {
+		state.TuicSettings = nil
 	}
 	if plan.DokodemoSettings == nil {
 		state.DokodemoSettings = nil

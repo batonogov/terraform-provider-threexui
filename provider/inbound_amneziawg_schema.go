@@ -989,6 +989,13 @@ func inboundOwnedPeerEmails(protocol string, state *InboundResourceModel) []stri
 		for _, c := range state.WireguardSettings.Clients {
 			add(c.Email)
 		}
+	case "tuic":
+		if state.TuicSettings == nil {
+			return nil
+		}
+		for _, c := range state.TuicSettings.Clients {
+			add(c.Email)
+		}
 	}
 	return emails
 }
