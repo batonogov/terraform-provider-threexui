@@ -939,6 +939,26 @@ func TestDriftAllSettingFields(t *testing.T) {
 		// v3.7.0 IP-limit allowlist (threexui_panel_general) and JSON-subscription
 		// observatory blob for client-side balancers (threexui_panel_subscription)
 		"ipLimitAllowlist": true, "subJsonObservatory": true,
+		// v3.8.0 subscription page / JSON-subscription / Happ additions
+		// (threexui_panel_subscription) and REALITY scan candidates
+		// (threexui_panel_general)
+		"subProfileMode": true, "subInfoNodeEnable": true,
+		"subCalendarExpireInclusive": true, "subExpiredTemplate": true,
+		"subTrafficDepletedTemplate": true,
+		"subJsonRoutingRules":        true, "subJsonDns": true,
+		"happLinkEnable": true, "realityScanCandidates": true,
+		"subHappAutoDetect": true, "subHappProviderId": true,
+		"subHappNewUrl": true, "subHappFallbackUrl": true,
+		"subHappSubInfoColor": true, "subHappSubInfoText": true,
+		"subHappSubInfoButtonText": true, "subHappSubInfoButtonLink": true,
+		"subHappSubExpire": true, "subHappSubExpireButtonLink": true,
+		"subHappNotificationExpire": true, "subHappNoLimit": true,
+		"subHappAlwaysHwid": true, "subHappTunMode": true,
+		"subHappTunType": true, "subHappExcludeRoutes": true,
+		"subHappExcludeApns": true, "subHappColorProfile": true,
+		"subHappPingType": true, "subHappAutoConnect": true,
+		"subHappAutoConnectType": true, "subHappPerAppMode": true,
+		"subHappPerAppList": true,
 	}
 
 	// Fields intentionally not managed by the provider.
@@ -958,33 +978,6 @@ func TestDriftAllSettingFields(t *testing.T) {
 		// The provider keeps panelProxy for backward compat with v3.2.0–v3.3.0
 		// panels even though v3.3.1's AllSetting struct dropped it.
 		"panelProxy": true,
-
-		// v3.8.0 Happ client customization (app-management / routing / UX).
-		"happLinkEnable":    true,
-		"subHappAutoDetect": true, "subHappProviderId": true,
-		"subHappNewUrl": true, "subHappFallbackUrl": true,
-		"subHappSubInfoColor": true, "subHappSubInfoText": true,
-		"subHappSubInfoButtonText": true, "subHappSubInfoButtonLink": true,
-		"subHappSubExpire": true, "subHappSubExpireButtonLink": true,
-		"subHappNotificationExpire": true, "subHappNoLimit": true,
-		"subHappAlwaysHwid": true, "subHappTunMode": true,
-		"subHappTunType": true, "subHappExcludeRoutes": true,
-		"subHappExcludeApns": true, "subHappColorProfile": true,
-		"subHappPingType": true, "subHappAutoConnect": true,
-		"subHappAutoConnectType": true, "subHappPerAppMode": true,
-		"subHappPerAppList": true,
-		// v3.8.0/v3.8.5 subscription page + JSON subscription additions:
-		// subProfileMode (None/Built-in/Custom, replaces the always-on built-in
-		// profile page of subProfileUrl, 3x-ui #6538), the dummy info/status
-		// node switch, month-end expiry display, per-state page templates, and
-		// client routing profiles/DNS baked into JSON subscriptions.
-		"subProfileMode": true, "subInfoNodeEnable": true,
-		"subCalendarExpireInclusive": true, "subExpiredTemplate": true,
-		"subTrafficDepletedTemplate": true,
-		"subJsonRoutingRules":        true, "subJsonDns": true,
-		// v3.8.0 panel_general: configurable REALITY scan candidates
-		// (dest list the panel scans when picking a target).
-		"realityScanCandidates": true,
 	}
 
 	dir := latestSnapshotDir(t)

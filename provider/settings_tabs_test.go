@@ -1589,3 +1589,102 @@ func TestPanelSettingsNeedRestart_DiscordKeys(t *testing.T) {
 		t.Error("keys unknown to the panel must never restart")
 	}
 }
+
+// --- v3.8.0 subscription additions (Happ / subProfileMode / page templates) ---
+
+// TestPanelSubscriptionV38ExpandFlatten round-trips a representative slice of
+// the 31 v3.8.0 subscription fields through expand/flatten.
+func TestPanelSubscriptionV38ExpandFlatten(t *testing.T) {
+	m := &PanelSubscriptionModel{
+		SubProfileMode:             types.StringValue("custom"),
+		SubInfoNodeEnable:          types.BoolValue(true),
+		SubCalendarExpireInclusive: types.BoolValue(false),
+		SubExpiredTemplate:         types.StringValue("expired {{email}}"),
+		SubTrafficDepletedTemplate: types.StringValue("depleted {{email}}"),
+		SubJsonRoutingRules:        types.StringValue(`[{"outboundTag":"direct"}]`),
+		SubJsonDns:                 types.StringValue(`{"servers":["1.1.1.1"]}`),
+		HappLinkEnable:             types.BoolValue(true),
+		SubHappAutoDetect:          types.BoolValue(true),
+		SubHappProviderId:          types.StringValue("prov-1"),
+		SubHappSubInfoText:         types.StringValue("info"),
+		SubHappTunMode:             types.StringValue("auto"),
+		SubHappPerAppList:          types.StringValue("com.a,com.b"),
+	}
+	out := expandPanelSubscription(m)
+	for key, want := range map[string]any{
+		"subProfileMode":             "custom",
+		"subInfoNodeEnable":          true,
+		"subCalendarExpireInclusive": false,
+		"subExpiredTemplate":         "expired {{email}}",
+		"subTrafficDepletedTemplate": "depleted {{email}}",
+		"subJsonRoutingRules":        `[{"outboundTag":"direct"}]`,
+		"subJsonDns":                 `{"servers":["1.1.1.1"]}`,
+		"happLinkEnable":             true,
+		"subHappAutoDetect":          true,
+		"subHappProviderId":          "prov-1",
+		"subHappSubInfoText":         "info",
+		"subHappTunMode":             "auto",
+		"subHappPerAppList":          "com.a,com.b",
+	} {
+		if got := out[key]; got != want {
+			t.Errorf("expand[%s] = %#v, want %#v", key, got, want)
+		}
+	}
+
+	back := flattenPanelSubscription(out)
+	if back.SubProfileMode.ValueString() != "custom" {
+		t.Errorf("flatten sub_profile_mode: %#v", back.SubProfileMode)
+	}
+	if !back.SubInfoNodeEnable.ValueBool() || back.HappLinkEnable.ValueBool() != true {
+		t.Errorf("flatten bools: %#v / %#v", back.SubInfoNodeEnable, back.HappLinkEnable)
+	}
+	if back.SubHappPerAppList.ValueString() != "com.a,com.b" {
+		t.Errorf("flatten sub_happ_per_app_list: %#v", back.SubHappPerAppList)
+	}
+}
+
+// TestPanelSettingsNeedRestart_SubServerV38Keys: the v3.8.0 keys frozen by
+// (*sub.Server).initRouter() must restart; the per-request ones must not
+// (3x-ui-3.8.5/internal/sub/sub.go:153-256 vs service.go:116/:251-257 and
+// web/service/happ.go:89).
+func TestPanelSettingsNeedRestart_SubServerV38Keys(t *testing.T) {
+	for key, change := range map[string][2]any{
+		"subProfileMode":      {"none", "builtin"},
+		"subJsonRoutingRules": {`[{"a":1}]`, `[{"a":2}]`},
+		"subJsonDns":          {`{"servers":[]}`, `{"servers":["1.1.1.1"]}`},
+		"subHappProviderId":   {"old", "new"},
+		"subHappTunMode":      {"auto", "on"},
+		"subHappPerAppList":   {"com.a", "com.b"},
+		"subHappAutoDetect":   {false, true},
+		"subHappAlwaysHwid":   {false, true},
+	} {
+		if !panelSettingsNeedRestart(map[string]any{key: change[0]}, map[string]any{key: change[1]}) {
+			t.Errorf("%s is frozen by initRouter and must restart the panel", key)
+		}
+	}
+	for key, change := range map[string][2]any{
+		"subCalendarExpireInclusive": {false, true},
+		"subInfoNodeEnable":          {false, true},
+		"subExpiredTemplate":         {"a", "b"},
+		"subTrafficDepletedTemplate": {"a", "b"},
+		"happLinkEnable":             {false, true},
+	} {
+		if panelSettingsNeedRestart(map[string]any{key: change[0]}, map[string]any{key: change[1]}) {
+			t.Errorf("%s is read per request and must not restart the panel", key)
+		}
+	}
+}
+
+// TestPanelGeneralRealityScanCandidates round-trips the v3.8.0 REALITY scan
+// candidate list through expand/flatten.
+func TestPanelGeneralRealityScanCandidates(t *testing.T) {
+	m := &PanelGeneralModel{RealityScanCandidates: types.StringValue("www.cloudflare.com:443,www.bing.com:443")}
+	out := expandPanelGeneral(m)
+	if out["realityScanCandidates"] != "www.cloudflare.com:443,www.bing.com:443" {
+		t.Fatalf("expand: %#v", out["realityScanCandidates"])
+	}
+	back := flattenPanelGeneral(out)
+	if back.RealityScanCandidates.ValueString() != "www.cloudflare.com:443,www.bing.com:443" {
+		t.Fatalf("flatten: %#v", back.RealityScanCandidates)
+	}
+}

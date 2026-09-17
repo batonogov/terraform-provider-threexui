@@ -117,3 +117,42 @@ All arguments are also exported as attributes.
 ```shell
 terraform import threexui_panel_subscription.settings settings
 ```
+
+## v3.8.0+ subscription settings
+
+All attributes in this section require 3x-ui **v3.8.0+**; older panels ignore the values and read them back empty. `sub_profile_mode`, `sub_json_routing_rules`, `sub_json_dns` and the whole `sub_happ_*` / Happ block are frozen into the subscription server at startup — changing them triggers a **panel restart** (see the note at the top); `sub_info_node_enable`, `sub_calendar_expire_inclusive`, `sub_expired_template`, `sub_traffic_depleted_template` and `happ_link_enable` are read per request and do not restart.
+
+- `sub_profile_mode` (Optional, String) - Subscription profile page mode: `none`, `builtin`, or `custom`. 3x-ui v3.8.0 turned the built-in profile page off by default and stopped advertising it in subscription responses ([3x-ui #6538](https://github.com/MHSanaei/3x-ui/pull/6538)); an existing `sub_profile_url` maps to `custom`. Empty is treated as `none` by the panel.
+- `sub_info_node_enable` (Optional, Boolean) - Add a dummy info/status node to client node lists.
+- `sub_calendar_expire_inclusive` (Optional, Boolean) - Present expiry at month end instead of a rolling interval.
+- `sub_expired_template` (Optional, String) - Template for expired-client subscription pages.
+- `sub_traffic_depleted_template` (Optional, String) - Template for depleted-client subscription pages.
+- `sub_json_routing_rules` (Optional, String) - Client routing rules baked into JSON subscriptions, as a JSON string.
+- `sub_json_dns` (Optional, String) - Panel-chosen DNS servers baked into JSON subscriptions, as a JSON string.
+- `happ_link_enable` (Optional, Boolean) - Enable the Happ app link integration.
+
+### Happ client customization
+
+- `sub_happ_auto_detect` (Optional, Boolean) - Auto-detect the client app.
+- `sub_happ_provider_id` (Optional, String) - Provider ID.
+- `sub_happ_new_url` (Optional, String) - New-user URL.
+- `sub_happ_fallback_url` (Optional, String) - Fallback URL.
+- `sub_happ_sub_info_color` (Optional, String) - Subscription info color.
+- `sub_happ_sub_info_text` (Optional, String) - Subscription info text.
+- `sub_happ_sub_info_button_text` (Optional, String) - Subscription info button text.
+- `sub_happ_sub_info_button_link` (Optional, String) - Subscription info button link.
+- `sub_happ_sub_expire` (Optional, Boolean) - Show subscription expiry.
+- `sub_happ_sub_expire_button_link` (Optional, String) - Expiry button link.
+- `sub_happ_notification_expire` (Optional, Boolean) - Expiry notification.
+- `sub_happ_no_limit` (Optional, Boolean) - No-limit profile.
+- `sub_happ_always_hwid` (Optional, Boolean) - Always use HWID limits.
+- `sub_happ_tun_mode` (Optional, String) - Tun mode.
+- `sub_happ_tun_type` (Optional, String) - Tun type.
+- `sub_happ_exclude_routes` (Optional, String) - Excluded routes.
+- `sub_happ_exclude_apns` (Optional, Boolean) - Exclude APNs.
+- `sub_happ_color_profile` (Optional, String) - Color profile.
+- `sub_happ_ping_type` (Optional, String) - Connectivity-check ping type.
+- `sub_happ_auto_connect` (Optional, Boolean) - Auto-connect.
+- `sub_happ_auto_connect_type` (Optional, String) - Auto-connect type.
+- `sub_happ_per_app_mode` (Optional, String) - Per-app proxy mode.
+- `sub_happ_per_app_list` (Optional, String) - Per-app list.
