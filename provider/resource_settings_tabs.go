@@ -809,7 +809,7 @@ func panelSubscriptionSchema() schema.Schema {
 			},
 			"sub_profile_mode": schema.StringAttribute{
 				Optional: true, Computed: true,
-				Description:   "Subscription profile page mode: none, builtin, or custom. The built-in profile page is off by default on v3.8.0+ (upstream #6538); an existing sub_profile_url maps to custom. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty.",
+				Description:   "Subscription profile page mode: none, builtin, or custom. The built-in profile page is off by default (upstream #6538, landed between v3.8.0 and v3.8.5); an existing sub_profile_url maps to custom. Requires 3x-ui v3.8.5+; on v3.8.0 the panel does not know the key and the attribute reads back null. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty.",
 				Validators:    []validator.String{stringvalidator.OneOf("none", "builtin", "custom")},
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
