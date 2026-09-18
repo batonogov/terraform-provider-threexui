@@ -1,5 +1,16 @@
 # Changelog
 
+## [3.26.0](https://github.com/batonogov/terraform-provider-threexui/compare/v3.25.0...v3.26.0) (2026-09-17)
+
+
+### Features
+
+* add the tuic protocol (TUIC v5, 3x-ui v3.8.0+) ([#463](https://github.com/batonogov/terraform-provider-threexui/issues/463)) ([5ac130d](https://github.com/batonogov/terraform-provider-threexui/commit/5ac130d1de6b01af052f78014aaeaaa819324719))
+* add threexui_panel_discord resource (3x-ui v3.8.0+) ([#460](https://github.com/batonogov/terraform-provider-threexui/issues/460)) ([52b32fb](https://github.com/batonogov/terraform-provider-threexui/commit/52b32fbfd18d66db6eb1d597417747ffeb9296be))
+* manage the 3x-ui v3.8.0 subscription and Happ settings ([#462](https://github.com/batonogov/terraform-provider-threexui/issues/462)) ([3b3dc7d](https://github.com/batonogov/terraform-provider-threexui/commit/3b3dc7dc041bd96ff0ca3c2d6bce13f84a24f7ba))
+* model tls_settings.certificates on threexui_inbound ([#461](https://github.com/batonogov/terraform-provider-threexui/issues/461)) ([ef0eeed](https://github.com/batonogov/terraform-provider-threexui/commit/ef0eeeda31010ef84139dce5dfb556e3ad46fa3a))
+* support 3x-ui v3.8.x (compat matrix, drift contract, v3.8 behavior changes) ([#459](https://github.com/batonogov/terraform-provider-threexui/issues/459)) ([72351ed](https://github.com/batonogov/terraform-provider-threexui/commit/72351ed68b1e0cda5f1f06745c47deb721eb282a))
+
 ## [3.25.0](https://github.com/batonogov/terraform-provider-threexui/compare/v3.24.0...v3.25.0) (2026-09-07)
 
 
