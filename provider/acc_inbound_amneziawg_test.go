@@ -320,3 +320,177 @@ resource "threexui_inbound" "awg_recreate" {
 		},
 	})
 }
+
+// TestAccInboundAmneziawgPeerLifecycle exercises the full peer lifecycle in
+// one test — add, edit, partial removal and removal-to-zero — because each
+// transition goes through a different code path since 3x-ui v3.9.0.
+//
+// Until v3.8.5 an UpdateInbound persisted the posted settings.clients
+// wholesale; since v3.9.0 the panel silently replaces the posted array with
+// the stored one (keepStoredClients,
+// 3x-ui-3.9.0/internal/web/service/inbound.go:1851-1862), so the provider
+// reconciles peers one by one through the /panel/api/clients/* endpoints
+// (reconcileInboundOwnedPeers). On ≤ v3.8.5 that reconciliation is a no-op
+// and the wholesale path does the work, so this test passes unchanged on
+// every panel that has the protocol.
+//
+// The partial-removal step doubles as a regression test for a deadlock: the
+// update holds inboundClientMu whenever the plan still has peers, and the
+// orphan-email cleanup afterwards takes the same mutex — an earlier
+// deferred-unlock structure held it across both and blocked forever.
+func TestAccInboundAmneziawgPeerLifecycle(t *testing.T) {
+	requireMinVersion(t, "v3.7.0")
+
+	const port = 26020
+	config := func(peers string) string {
+		return testAccProviderConfig() + fmt.Sprintf(`
+resource "threexui_inbound" "awg_lifecycle" {
+  port     = %d
+  protocol = "amneziawg"
+  remark   = "acc-awg-lifecycle"
+  enable   = true
+
+  amneziawg_settings {
+    server {}
+%s
+  }
+}
+`, port, peers)
+	}
+
+	peerA := func(comment string) string {
+		return fmt.Sprintf(`
+    clients {
+      email       = "awg-life-a@test.com"
+      enable      = true
+      public_key  = "dGVzdHB1YmxpY2tleXRlc3RwdWJsaWNrZXkxMjM0NQ=="
+      allowed_ips = ["10.8.1.10/32"]
+      comment     = %q
+    }`, comment)
+	}
+	peerB := `
+    clients {
+      email       = "awg-life-b@test.com"
+      enable      = true
+      public_key  = "cHB1YmxpY2tleXR3b3B1YmxpY2tleXR3b3B1YmxpY2tleQ=="
+      allowed_ips = ["10.8.1.11/32"]
+    }`
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: config(peerA("one")),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("threexui_inbound.awg_lifecycle", "amneziawg_settings.clients.#", "1"),
+					resource.TestCheckResourceAttr("threexui_inbound.awg_lifecycle", "amneziawg_settings.clients.0.comment", "one"),
+				),
+			},
+			{
+				// Edit peer a AND add peer b in one apply.
+				Config: config(peerA("two") + peerB),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("threexui_inbound.awg_lifecycle", "amneziawg_settings.clients.#", "2"),
+					resource.TestCheckResourceAttr("threexui_inbound.awg_lifecycle", "amneziawg_settings.clients.0.comment", "two"),
+					resource.TestCheckResourceAttr("threexui_inbound.awg_lifecycle", "amneziawg_settings.clients.1.email", "awg-life-b@test.com"),
+				),
+			},
+			{
+				// Partial removal: peer b goes, peer a stays.
+				Config: config(peerA("two")),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("threexui_inbound.awg_lifecycle", "amneziawg_settings.clients.#", "1"),
+					resource.TestCheckResourceAttr("threexui_inbound.awg_lifecycle", "amneziawg_settings.clients.0.email", "awg-life-a@test.com"),
+				),
+			},
+			{
+				// Removal-to-zero: the historically nasty case (see the
+				// "block count changed from 0 to 1" gotcha).
+				Config: config(""),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("threexui_inbound.awg_lifecycle", "amneziawg_settings.clients.#", "0"),
+				),
+			},
+			{
+				// Peer b's email was freed by the removal, so reusing it must
+				// not fail with "Duplicate email".
+				Config: config(peerB),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("threexui_inbound.awg_lifecycle", "amneziawg_settings.clients.#", "1"),
+					resource.TestCheckResourceAttr("threexui_inbound.awg_lifecycle", "amneziawg_settings.clients.0.email", "awg-life-b@test.com"),
+				),
+			},
+			{
+				Config:   config(peerB),
+				PlanOnly: true,
+			},
+		},
+	})
+}
+
+// TestAccInboundAmneziawgPeerEditBumpsUpdatedAt pins the v3.9.0-only shape of
+// a peer edit: saved through the client endpoint, the panel stamps a fresh
+// updated_at on the peer (client_inbound_apply.go) instead of preserving the
+// posted one. The apply only succeeds because ModifyPlan plans updated_at as
+// unknown for edited peers — without it Terraform rejects the bumped value as
+// an inconsistent result. On ≤ v3.8.5 the wholesale update preserves the
+// posted timestamp, so the assertion would not hold there.
+func TestAccInboundAmneziawgPeerEditBumpsUpdatedAt(t *testing.T) {
+	requireMinVersion(t, "v3.9.0")
+
+	const port = 26021
+	config := func(comment string) string {
+		return testAccProviderConfig() + fmt.Sprintf(`
+resource "threexui_inbound" "awg_stamps" {
+  port     = %d
+  protocol = "amneziawg"
+  remark   = "acc-awg-stamps"
+  enable   = true
+
+  amneziawg_settings {
+    server {}
+    clients {
+      email       = "awg-stamp@test.com"
+      enable      = true
+      public_key  = "dGVzdHB1YmxpY2tleXRlc3RwdWJsaWNrZXkxMjM0NQ=="
+      allowed_ips = ["10.8.1.12/32"]
+      comment     = %q
+    }
+  }
+}
+`, port, comment)
+	}
+
+	var updatedAtAfterCreate string
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: config("one"),
+				Check: resource.TestCheckResourceAttrWith("threexui_inbound.awg_stamps", "amneziawg_settings.clients.0.updated_at", func(v string) error {
+					if v == "" || v == "0" {
+						return fmt.Errorf("expected the panel to stamp updated_at on create, got %q", v)
+					}
+					updatedAtAfterCreate = v
+					return nil
+				}),
+			},
+			{
+				Config: config("two"),
+				Check: resource.TestCheckResourceAttrWith("threexui_inbound.awg_stamps", "amneziawg_settings.clients.0.updated_at", func(v string) error {
+					if v == updatedAtAfterCreate {
+						return fmt.Errorf("expected the endpoint save to bump updated_at, still %q", v)
+					}
+					return nil
+				}),
+			},
+			{
+				Config:   config("two"),
+				PlanOnly: true,
+			},
+		},
+	})
+}

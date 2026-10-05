@@ -566,3 +566,94 @@ func TestExpandFlatten_DokodemoInboundSettings_WithPortMap(t *testing.T) {
 		t.Fatal("expected non-nil flattened model")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// tun-only settings (xray-core 26.9.30 / 3x-ui v3.9.0+)
+// ---------------------------------------------------------------------------
+
+func TestExpandFlatten_TunAutoSystemSettings(t *testing.T) {
+	wfp := types.ListValueMust(types.StringType, []attr.Value{
+		types.StringValue("dns"), types.StringValue("misconfigtun"),
+	})
+	model := &InboundDokodemoSettingsModel{
+		Address:                types.StringValue("10.0.0.1"),
+		Port:                   types.Int64Value(53),
+		AutoSystemDnsToGateway: types.BoolValue(true),
+		AutoSystemWfpBlockLeak: wfp,
+	}
+
+	expanded := expandDokodemoInboundSettings("tun", model)
+	if expanded["autoSystemDnsToGateway"] != true {
+		t.Errorf("autoSystemDnsToGateway: got %v", expanded["autoSystemDnsToGateway"])
+	}
+	leak, ok := expanded["autoSystemWfpBlockLeak"].([]any)
+	if !ok || len(leak) != 2 || leak[0] != "dns" || leak[1] != "misconfigtun" {
+		t.Errorf("autoSystemWfpBlockLeak: got %#v", expanded["autoSystemWfpBlockLeak"])
+	}
+
+	flat := flattenDokodemoInboundSettings("tun", expanded)
+	if flat == nil {
+		t.Fatal("expected non-nil flattened model")
+	}
+	if !flat.AutoSystemDnsToGateway.ValueBool() {
+		t.Errorf("flatten autoSystemDnsToGateway: %v", flat.AutoSystemDnsToGateway)
+	}
+	var got []string
+	flat.AutoSystemWfpBlockLeak.ElementsAs(t.Context(), &got, false)
+	if len(got) != 2 || got[0] != "dns" || got[1] != "misconfigtun" {
+		t.Errorf("flatten autoSystemWfpBlockLeak: %v", got)
+	}
+}
+
+// The tun-only keys must never leak onto dokodemo-door/tunnel settings, and
+// must flatten to null there.
+func TestExpandFlatten_TunAutoSystemSettings_ProtocolGated(t *testing.T) {
+	model := &InboundDokodemoSettingsModel{
+		Address:                types.StringValue("10.0.0.1"),
+		Port:                   types.Int64Value(53),
+		AutoSystemDnsToGateway: types.BoolValue(true),
+		AutoSystemWfpBlockLeak: types.ListValueMust(types.StringType, []attr.Value{
+			types.StringValue("dns"),
+		}),
+	}
+
+	for _, protocol := range []string{"dokodemo-door", "tunnel"} {
+		expanded := expandDokodemoInboundSettings(protocol, model)
+		if _, ok := expanded["autoSystemDnsToGateway"]; ok {
+			t.Errorf("%s must not carry autoSystemDnsToGateway", protocol)
+		}
+		if _, ok := expanded["autoSystemWfpBlockLeak"]; ok {
+			t.Errorf("%s must not carry autoSystemWfpBlockLeak", protocol)
+		}
+		flat := flattenDokodemoInboundSettings(protocol, expanded)
+		if !flat.AutoSystemDnsToGateway.IsNull() {
+			t.Errorf("%s flatten autoSystemDnsToGateway must be null, got %v", protocol, flat.AutoSystemDnsToGateway)
+		}
+		if !flat.AutoSystemWfpBlockLeak.IsNull() {
+			t.Errorf("%s flatten autoSystemWfpBlockLeak must be null, got %v", protocol, flat.AutoSystemWfpBlockLeak)
+		}
+	}
+}
+
+// A tun settings blob without the optional keys flattens them to null, and an
+// unset model does not emit the keys.
+func TestExpandFlatten_TunAutoSystemSettings_Absent(t *testing.T) {
+	model := &InboundDokodemoSettingsModel{
+		Address: types.StringValue("10.0.0.1"),
+		Port:    types.Int64Value(53),
+	}
+	expanded := expandDokodemoInboundSettings("tun", model)
+	if _, ok := expanded["autoSystemDnsToGateway"]; ok {
+		t.Error("unset autoSystemDnsToGateway must be omitted")
+	}
+	if _, ok := expanded["autoSystemWfpBlockLeak"]; ok {
+		t.Error("unset autoSystemWfpBlockLeak must be omitted")
+	}
+	flat := flattenDokodemoInboundSettings("tun", expanded)
+	if !flat.AutoSystemDnsToGateway.IsNull() {
+		t.Errorf("absent autoSystemDnsToGateway must flatten to null, got %v", flat.AutoSystemDnsToGateway)
+	}
+	if !flat.AutoSystemWfpBlockLeak.IsNull() {
+		t.Errorf("absent autoSystemWfpBlockLeak must flatten to null, got %v", flat.AutoSystemWfpBlockLeak)
+	}
+}

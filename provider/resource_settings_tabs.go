@@ -750,6 +750,46 @@ type PanelSubscriptionModel struct {
 	SubHappAutoConnectType     types.String `tfsdk:"sub_happ_auto_connect_type"`
 	SubHappPerAppMode          types.String `tfsdk:"sub_happ_per_app_mode"`
 	SubHappPerAppList          types.String `tfsdk:"sub_happ_per_app_list"`
+
+	// v3.9.0 subscription additions. externalSubUserAgent is read per request on
+	// every external-subscription fetch (internal/sub/external_subscription.go)
+	// and is therefore NOT a restart key — the same per-request exception as
+	// subURI/subJsonURI/subClashURI. subHappLocalProxyAuth completes the Happ
+	// block (sub.go:256) and the whole subIncy* block (sub.go:259-286) is read
+	// inside initRouter and frozen into the SUBController — all restart keys.
+	// The Incy strings carry a meaningful "": it omits the header so the
+	// subscriber's own app setting is left alone (entity.go comment), so empty
+	// must never be treated as unset.
+	SubHappLocalProxyAuth      types.String `tfsdk:"sub_happ_local_proxy_auth"`
+	ExternalSubUserAgent       types.String `tfsdk:"external_sub_user_agent"`
+	SubIncyAppAutoDetect       types.Bool   `tfsdk:"sub_incy_app_auto_detect"`
+	SubIncyProfileDescription  types.String `tfsdk:"sub_incy_profile_description"`
+	SubIncySortOrder           types.String `tfsdk:"sub_incy_sort_order"`
+	SubIncySupportEmail        types.String `tfsdk:"sub_incy_support_email"`
+	SubIncyAnnounceUrl         types.String `tfsdk:"sub_incy_announce_url"`
+	SubIncyPremiumUrl          types.String `tfsdk:"sub_incy_premium_url"`
+	SubIncyBannerText          types.String `tfsdk:"sub_incy_banner_text"`
+	SubIncyBannerButtonText    types.String `tfsdk:"sub_incy_banner_button_text"`
+	SubIncyBannerButtonUrl     types.String `tfsdk:"sub_incy_banner_button_url"`
+	SubIncyBannerBgColor       types.String `tfsdk:"sub_incy_banner_bg_color"`
+	SubIncyBannerButtonColor   types.String `tfsdk:"sub_incy_banner_button_color"`
+	SubIncyHideUrl             types.String `tfsdk:"sub_incy_hide_url"`
+	SubIncyHideCheck           types.String `tfsdk:"sub_incy_hide_check"`
+	SubIncyNoLimitEnabled      types.String `tfsdk:"sub_incy_no_limit_enabled"`
+	SubIncyPerAppEnable        types.String `tfsdk:"sub_incy_per_app_enable"`
+	SubIncyPerAppMode          types.String `tfsdk:"sub_incy_per_app_mode"`
+	SubIncyPerAppList          types.String `tfsdk:"sub_incy_per_app_list"`
+	SubIncyFragmentationEnable types.String `tfsdk:"sub_incy_fragmentation_enable"`
+	SubIncyFragmentLength      types.String `tfsdk:"sub_incy_fragment_length"`
+	SubIncyFragmentInterval    types.String `tfsdk:"sub_incy_fragment_interval"`
+	SubIncyFragmentPackets     types.String `tfsdk:"sub_incy_fragment_packets"`
+	SubIncyNoisesEnable        types.String `tfsdk:"sub_incy_noises_enable"`
+	SubIncyNoisesType          types.String `tfsdk:"sub_incy_noises_type"`
+	SubIncyNoisesPacket        types.String `tfsdk:"sub_incy_noises_packet"`
+	SubIncyNoisesDelay         types.String `tfsdk:"sub_incy_noises_delay"`
+	SubIncyResolveEnable       types.String `tfsdk:"sub_incy_resolve_enable"`
+	SubIncyResolveDnsDomain    types.String `tfsdk:"sub_incy_resolve_dns_domain"`
+	SubIncyResolveDnsIp        types.String `tfsdk:"sub_incy_resolve_dns_ip"`
 }
 
 func panelSubscriptionSchema() schema.Schema {
@@ -781,11 +821,17 @@ func panelSubscriptionSchema() schema.Schema {
 			},
 			"sub_support_url": schema.StringAttribute{
 				Optional: true, Computed: true,
-				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+					ensureURLScheme(),
+				},
 			},
 			"sub_profile_url": schema.StringAttribute{
 				Optional: true, Computed: true,
-				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+					ensureURLScheme(),
+				},
 			},
 			"sub_announce": schema.StringAttribute{
 				Optional: true, Computed: true,
@@ -860,13 +906,19 @@ func panelSubscriptionSchema() schema.Schema {
 			},
 			"sub_happ_new_url": schema.StringAttribute{
 				Optional: true, Computed: true,
-				Description:   "Happ: new-user URL. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty.",
-				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+				Description: "Happ: new-user URL. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty. " + subSchemeNormalizedNote,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+					ensureURLScheme(),
+				},
 			},
 			"sub_happ_fallback_url": schema.StringAttribute{
 				Optional: true, Computed: true,
-				Description:   "Happ: fallback URL. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty.",
-				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+				Description: "Happ: fallback URL. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty. " + subSchemeNormalizedNote,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+					ensureURLScheme(),
+				},
 			},
 			"sub_happ_sub_info_color": schema.StringAttribute{
 				Optional: true, Computed: true,
@@ -885,8 +937,11 @@ func panelSubscriptionSchema() schema.Schema {
 			},
 			"sub_happ_sub_info_button_link": schema.StringAttribute{
 				Optional: true, Computed: true,
-				Description:   "Happ: subscription info button link. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty.",
-				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+				Description: "Happ: subscription info button link. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty. " + subSchemeNormalizedNote,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+					ensureURLScheme(),
+				},
 			},
 			"sub_happ_sub_expire": schema.BoolAttribute{
 				Optional: true, Computed: true,
@@ -895,8 +950,11 @@ func panelSubscriptionSchema() schema.Schema {
 			},
 			"sub_happ_sub_expire_button_link": schema.StringAttribute{
 				Optional: true, Computed: true,
-				Description:   "Happ: expiry button link. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty.",
-				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+				Description: "Happ: expiry button link. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty. " + subSchemeNormalizedNote,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+					ensureURLScheme(),
+				},
 			},
 			"sub_happ_notification_expire": schema.BoolAttribute{
 				Optional: true, Computed: true,
@@ -961,6 +1019,170 @@ func panelSubscriptionSchema() schema.Schema {
 			"sub_happ_per_app_list": schema.StringAttribute{
 				Optional: true, Computed: true,
 				Description:   "Happ: per-app list. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty.",
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_happ_local_proxy_auth": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description: "Happ: local proxy authentication mode (upstream default `auto`). " +
+					"Not a secret — the panel returns it unredacted. Requires 3x-ui v3.9.0+; older panels ignore it and read it back empty.",
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"external_sub_user_agent": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description: "User-Agent sent when the panel fetches external subscriptions (upstream default `v2rayNG/1.8.5`). " +
+					"Read per request, so changing it does NOT restart the panel. Requires 3x-ui v3.9.0+; older panels ignore it and read it back empty.",
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_incy_app_auto_detect": schema.BoolAttribute{
+				Optional: true, Computed: true,
+				Description:   "Incy: auto-detect the client app. Requires 3x-ui v3.9.0+; older panels ignore it and read it back empty.",
+				PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+			},
+			"sub_incy_profile_description": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   subIncyDescription("profile description"),
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_incy_sort_order": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   subIncyDescription("sort order"),
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_incy_support_email": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   subIncyDescription("support email"),
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_incy_announce_url": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description: subIncyDescription("announcement URL") + " " + subSchemeNormalizedNote,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+					ensureURLScheme(),
+				},
+			},
+			"sub_incy_premium_url": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description: subIncyDescription("premium URL") + " " + subSchemeNormalizedNote,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+					ensureURLScheme(),
+				},
+			},
+			"sub_incy_banner_text": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   subIncyDescription("banner text"),
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_incy_banner_button_text": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   subIncyDescription("banner button text"),
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_incy_banner_button_url": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description: subIncyDescription("banner button URL") + " " + subSchemeNormalizedNote,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+					ensureURLScheme(),
+				},
+			},
+			"sub_incy_banner_bg_color": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   subIncyDescription("banner background color"),
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_incy_banner_button_color": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   subIncyDescription("banner button color"),
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_incy_hide_url": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   subIncyDescription("hide URL"),
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_incy_hide_check": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   subIncyDescription("hide check"),
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_incy_no_limit_enabled": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   subIncyDescription("no-limit flag (a stringified bool upstream)"),
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_incy_per_app_enable": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   subIncyDescription("per-app proxy enable flag (a stringified bool upstream)"),
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_incy_per_app_mode": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   subIncyDescription("per-app proxy mode"),
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_incy_per_app_list": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   subIncyDescription("per-app list"),
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_incy_fragmentation_enable": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   subIncyDescription("fragmentation enable flag (a stringified bool upstream)"),
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_incy_fragment_length": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   subIncyDescription("fragment length"),
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_incy_fragment_interval": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   subIncyDescription("fragment interval"),
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_incy_fragment_packets": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   subIncyDescription("fragment packets"),
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_incy_noises_enable": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   subIncyDescription("noises enable flag (a stringified bool upstream)"),
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_incy_noises_type": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   subIncyDescription("noises type"),
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_incy_noises_packet": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   subIncyDescription("noises packet"),
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_incy_noises_delay": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   subIncyDescription("noises delay"),
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_incy_resolve_enable": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   subIncyDescription("server-address resolve enable flag (a stringified bool upstream)"),
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"sub_incy_resolve_dns_domain": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description: subIncyDescription("resolve DNS domain (treated as a URL upstream)") + " " + subSchemeNormalizedNote,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+					ensureURLScheme(),
+				},
+			},
+			"sub_incy_resolve_dns_ip": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   subIncyDescription("resolve DNS IP"),
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"sub_listen": schema.StringAttribute{
@@ -1267,6 +1489,96 @@ func expandPanelSubscription(m *PanelSubscriptionModel) map[string]any {
 	if !m.SubHappPerAppList.IsNull() && !m.SubHappPerAppList.IsUnknown() {
 		payload["subHappPerAppList"] = m.SubHappPerAppList.ValueString()
 	}
+	if !m.SubHappLocalProxyAuth.IsNull() && !m.SubHappLocalProxyAuth.IsUnknown() {
+		payload["subHappLocalProxyAuth"] = m.SubHappLocalProxyAuth.ValueString()
+	}
+	if !m.ExternalSubUserAgent.IsNull() && !m.ExternalSubUserAgent.IsUnknown() {
+		payload["externalSubUserAgent"] = m.ExternalSubUserAgent.ValueString()
+	}
+	if !m.SubIncyAppAutoDetect.IsNull() && !m.SubIncyAppAutoDetect.IsUnknown() {
+		payload["subIncyAppAutoDetect"] = m.SubIncyAppAutoDetect.ValueBool()
+	}
+	if !m.SubIncyProfileDescription.IsNull() && !m.SubIncyProfileDescription.IsUnknown() {
+		payload["subIncyProfileDescription"] = m.SubIncyProfileDescription.ValueString()
+	}
+	if !m.SubIncySortOrder.IsNull() && !m.SubIncySortOrder.IsUnknown() {
+		payload["subIncySortOrder"] = m.SubIncySortOrder.ValueString()
+	}
+	if !m.SubIncySupportEmail.IsNull() && !m.SubIncySupportEmail.IsUnknown() {
+		payload["subIncySupportEmail"] = m.SubIncySupportEmail.ValueString()
+	}
+	if !m.SubIncyAnnounceUrl.IsNull() && !m.SubIncyAnnounceUrl.IsUnknown() {
+		payload["subIncyAnnounceUrl"] = m.SubIncyAnnounceUrl.ValueString()
+	}
+	if !m.SubIncyPremiumUrl.IsNull() && !m.SubIncyPremiumUrl.IsUnknown() {
+		payload["subIncyPremiumUrl"] = m.SubIncyPremiumUrl.ValueString()
+	}
+	if !m.SubIncyBannerText.IsNull() && !m.SubIncyBannerText.IsUnknown() {
+		payload["subIncyBannerText"] = m.SubIncyBannerText.ValueString()
+	}
+	if !m.SubIncyBannerButtonText.IsNull() && !m.SubIncyBannerButtonText.IsUnknown() {
+		payload["subIncyBannerButtonText"] = m.SubIncyBannerButtonText.ValueString()
+	}
+	if !m.SubIncyBannerButtonUrl.IsNull() && !m.SubIncyBannerButtonUrl.IsUnknown() {
+		payload["subIncyBannerButtonUrl"] = m.SubIncyBannerButtonUrl.ValueString()
+	}
+	if !m.SubIncyBannerBgColor.IsNull() && !m.SubIncyBannerBgColor.IsUnknown() {
+		payload["subIncyBannerBgColor"] = m.SubIncyBannerBgColor.ValueString()
+	}
+	if !m.SubIncyBannerButtonColor.IsNull() && !m.SubIncyBannerButtonColor.IsUnknown() {
+		payload["subIncyBannerButtonColor"] = m.SubIncyBannerButtonColor.ValueString()
+	}
+	if !m.SubIncyHideUrl.IsNull() && !m.SubIncyHideUrl.IsUnknown() {
+		payload["subIncyHideUrl"] = m.SubIncyHideUrl.ValueString()
+	}
+	if !m.SubIncyHideCheck.IsNull() && !m.SubIncyHideCheck.IsUnknown() {
+		payload["subIncyHideCheck"] = m.SubIncyHideCheck.ValueString()
+	}
+	if !m.SubIncyNoLimitEnabled.IsNull() && !m.SubIncyNoLimitEnabled.IsUnknown() {
+		payload["subIncyNoLimitEnabled"] = m.SubIncyNoLimitEnabled.ValueString()
+	}
+	if !m.SubIncyPerAppEnable.IsNull() && !m.SubIncyPerAppEnable.IsUnknown() {
+		payload["subIncyPerAppEnable"] = m.SubIncyPerAppEnable.ValueString()
+	}
+	if !m.SubIncyPerAppMode.IsNull() && !m.SubIncyPerAppMode.IsUnknown() {
+		payload["subIncyPerAppMode"] = m.SubIncyPerAppMode.ValueString()
+	}
+	if !m.SubIncyPerAppList.IsNull() && !m.SubIncyPerAppList.IsUnknown() {
+		payload["subIncyPerAppList"] = m.SubIncyPerAppList.ValueString()
+	}
+	if !m.SubIncyFragmentationEnable.IsNull() && !m.SubIncyFragmentationEnable.IsUnknown() {
+		payload["subIncyFragmentationEnable"] = m.SubIncyFragmentationEnable.ValueString()
+	}
+	if !m.SubIncyFragmentLength.IsNull() && !m.SubIncyFragmentLength.IsUnknown() {
+		payload["subIncyFragmentLength"] = m.SubIncyFragmentLength.ValueString()
+	}
+	if !m.SubIncyFragmentInterval.IsNull() && !m.SubIncyFragmentInterval.IsUnknown() {
+		payload["subIncyFragmentInterval"] = m.SubIncyFragmentInterval.ValueString()
+	}
+	if !m.SubIncyFragmentPackets.IsNull() && !m.SubIncyFragmentPackets.IsUnknown() {
+		payload["subIncyFragmentPackets"] = m.SubIncyFragmentPackets.ValueString()
+	}
+	if !m.SubIncyNoisesEnable.IsNull() && !m.SubIncyNoisesEnable.IsUnknown() {
+		payload["subIncyNoisesEnable"] = m.SubIncyNoisesEnable.ValueString()
+	}
+	if !m.SubIncyNoisesType.IsNull() && !m.SubIncyNoisesType.IsUnknown() {
+		payload["subIncyNoisesType"] = m.SubIncyNoisesType.ValueString()
+	}
+	if !m.SubIncyNoisesPacket.IsNull() && !m.SubIncyNoisesPacket.IsUnknown() {
+		payload["subIncyNoisesPacket"] = m.SubIncyNoisesPacket.ValueString()
+	}
+	if !m.SubIncyNoisesDelay.IsNull() && !m.SubIncyNoisesDelay.IsUnknown() {
+		payload["subIncyNoisesDelay"] = m.SubIncyNoisesDelay.ValueString()
+	}
+	if !m.SubIncyResolveEnable.IsNull() && !m.SubIncyResolveEnable.IsUnknown() {
+		payload["subIncyResolveEnable"] = m.SubIncyResolveEnable.ValueString()
+	}
+	if !m.SubIncyResolveDnsDomain.IsNull() && !m.SubIncyResolveDnsDomain.IsUnknown() {
+		payload["subIncyResolveDnsDomain"] = m.SubIncyResolveDnsDomain.ValueString()
+	}
+	if !m.SubIncyResolveDnsIp.IsNull() && !m.SubIncyResolveDnsIp.IsUnknown() {
+		payload["subIncyResolveDnsIp"] = m.SubIncyResolveDnsIp.ValueString()
+	}
 	if !m.SubListen.IsNull() && !m.SubListen.IsUnknown() {
 		payload["subListen"] = m.SubListen.ValueString()
 	}
@@ -1492,6 +1804,96 @@ func flattenPanelSubscription(in map[string]any) *PanelSubscriptionModel {
 	}
 	if v, ok := in["subHappPerAppList"]; ok {
 		m.SubHappPerAppList = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subHappLocalProxyAuth"]; ok {
+		m.SubHappLocalProxyAuth = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["externalSubUserAgent"]; ok {
+		m.ExternalSubUserAgent = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subIncyAppAutoDetect"]; ok {
+		m.SubIncyAppAutoDetect = types.BoolValue(boolValue(v))
+	}
+	if v, ok := in["subIncyProfileDescription"]; ok {
+		m.SubIncyProfileDescription = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subIncySortOrder"]; ok {
+		m.SubIncySortOrder = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subIncySupportEmail"]; ok {
+		m.SubIncySupportEmail = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subIncyAnnounceUrl"]; ok {
+		m.SubIncyAnnounceUrl = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subIncyPremiumUrl"]; ok {
+		m.SubIncyPremiumUrl = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subIncyBannerText"]; ok {
+		m.SubIncyBannerText = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subIncyBannerButtonText"]; ok {
+		m.SubIncyBannerButtonText = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subIncyBannerButtonUrl"]; ok {
+		m.SubIncyBannerButtonUrl = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subIncyBannerBgColor"]; ok {
+		m.SubIncyBannerBgColor = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subIncyBannerButtonColor"]; ok {
+		m.SubIncyBannerButtonColor = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subIncyHideUrl"]; ok {
+		m.SubIncyHideUrl = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subIncyHideCheck"]; ok {
+		m.SubIncyHideCheck = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subIncyNoLimitEnabled"]; ok {
+		m.SubIncyNoLimitEnabled = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subIncyPerAppEnable"]; ok {
+		m.SubIncyPerAppEnable = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subIncyPerAppMode"]; ok {
+		m.SubIncyPerAppMode = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subIncyPerAppList"]; ok {
+		m.SubIncyPerAppList = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subIncyFragmentationEnable"]; ok {
+		m.SubIncyFragmentationEnable = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subIncyFragmentLength"]; ok {
+		m.SubIncyFragmentLength = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subIncyFragmentInterval"]; ok {
+		m.SubIncyFragmentInterval = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subIncyFragmentPackets"]; ok {
+		m.SubIncyFragmentPackets = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subIncyNoisesEnable"]; ok {
+		m.SubIncyNoisesEnable = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subIncyNoisesType"]; ok {
+		m.SubIncyNoisesType = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subIncyNoisesPacket"]; ok {
+		m.SubIncyNoisesPacket = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subIncyNoisesDelay"]; ok {
+		m.SubIncyNoisesDelay = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subIncyResolveEnable"]; ok {
+		m.SubIncyResolveEnable = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subIncyResolveDnsDomain"]; ok {
+		m.SubIncyResolveDnsDomain = types.StringValue(stringValue(v))
+	}
+	if v, ok := in["subIncyResolveDnsIp"]; ok {
+		m.SubIncyResolveDnsIp = types.StringValue(stringValue(v))
 	}
 	if v, ok := in["subListen"]; ok {
 		m.SubListen = types.StringValue(stringValue(v))
@@ -3753,6 +4155,43 @@ func panelSettingsNeedRestart(existing, desired map[string]any) bool {
 		"subHappAutoConnectType",
 		"subHappPerAppMode",
 		"subHappPerAppList",
+		// v3.9.0 additions frozen by (*sub.Server).initRouter(): subHappLocalProxyAuth
+		// completes happCfg (3x-ui-3.9.0/internal/sub/sub.go:256) and the whole
+		// subIncy* block is captured into incyCfg (sub.go:259-286), both consumed
+		// from the frozen controller at request time (controller.go:968,984 —
+		// ApplyHappHeaders/ApplyIncyHeaders). The per-request exception (NOT here):
+		// externalSubUserAgent, read live from the DB on every external-sub fetch
+		// (internal/sub/external_subscription.go:183-187) — the same exception as
+		// subURI/subJsonURI/subClashURI.
+		"subHappLocalProxyAuth",
+		"subIncyAppAutoDetect",
+		"subIncyProfileDescription",
+		"subIncySortOrder",
+		"subIncySupportEmail",
+		"subIncyAnnounceUrl",
+		"subIncyPremiumUrl",
+		"subIncyBannerText",
+		"subIncyBannerButtonText",
+		"subIncyBannerButtonUrl",
+		"subIncyBannerBgColor",
+		"subIncyBannerButtonColor",
+		"subIncyHideUrl",
+		"subIncyHideCheck",
+		"subIncyNoLimitEnabled",
+		"subIncyPerAppEnable",
+		"subIncyPerAppMode",
+		"subIncyPerAppList",
+		"subIncyFragmentationEnable",
+		"subIncyFragmentLength",
+		"subIncyFragmentInterval",
+		"subIncyFragmentPackets",
+		"subIncyNoisesEnable",
+		"subIncyNoisesType",
+		"subIncyNoisesPacket",
+		"subIncyNoisesDelay",
+		"subIncyResolveEnable",
+		"subIncyResolveDnsDomain",
+		"subIncyResolveDnsIp",
 	}
 	for _, key := range restartKeys {
 		newVal, ok := desired[key]

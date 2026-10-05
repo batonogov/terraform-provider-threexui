@@ -430,3 +430,117 @@ resource "threexui_panel_subscription" "test" {
 		},
 	})
 }
+
+// TestAccPanelSubscriptionV39 verifies the v3.9.0 subscription additions —
+// external_sub_user_agent, sub_happ_local_proxy_auth and the Incy client
+// customization block — round-trip through the panel API. It also exercises
+// the common.EnsureURLScheme rewrite: sub_incy_announce_url is configured
+// scheme-less and must come back (and stay) as https://… without a diff on
+// the idempotency step.
+func TestAccPanelSubscriptionV39(t *testing.T) {
+	requireMinVersion(t, "v3.9.0")
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: testAccProviderConfig() + `
+resource "threexui_panel_subscription" "test" {
+  sub_enable = true
+  sub_path   = "/sub/"
+  sub_port   = 2096
+
+  external_sub_user_agent  = "v2rayNG/1.9.0"
+  sub_happ_local_proxy_auth = "auto"
+
+  sub_incy_app_auto_detect      = true
+  sub_incy_profile_description  = "v39 profile"
+  sub_incy_sort_order           = "asc"
+  sub_incy_support_email        = "support@example.com"
+  sub_incy_announce_url         = "example.com/announce"
+  sub_incy_premium_url          = "https://example.com/premium"
+  sub_incy_banner_text          = "v39 banner"
+  sub_incy_banner_button_text   = "Upgrade"
+  sub_incy_banner_button_url    = "https://example.com/buy"
+  sub_incy_banner_bg_color      = "#101010"
+  sub_incy_banner_button_color  = "#f0f0f0"
+  sub_incy_hide_url             = "hide"
+  sub_incy_hide_check           = "check"
+  sub_incy_no_limit_enabled     = "true"
+  sub_incy_per_app_enable       = "true"
+  sub_incy_per_app_mode         = "on"
+  sub_incy_per_app_list         = "com.a,com.b"
+  sub_incy_fragmentation_enable = "true"
+  sub_incy_fragment_length      = "10-20"
+  sub_incy_fragment_interval    = "5-10"
+  sub_incy_fragment_packets     = "tlshello"
+  sub_incy_noises_enable        = "true"
+  sub_incy_noises_type          = "rand"
+  sub_incy_noises_packet        = "10-20"
+  sub_incy_noises_delay         = "1-5"
+  sub_incy_resolve_enable       = "true"
+  sub_incy_resolve_dns_domain   = "https://dns.example.com"
+  sub_incy_resolve_dns_ip       = "1.1.1.1"
+}`,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "id", "settings"),
+					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "external_sub_user_agent", "v2rayNG/1.9.0"),
+					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "sub_happ_local_proxy_auth", "auto"),
+					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "sub_incy_app_auto_detect", "true"),
+					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "sub_incy_profile_description", "v39 profile"),
+					// Configured scheme-less: the panel stores it as https://… and
+					// the provider plans the same value, so state matches.
+					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "sub_incy_announce_url", "https://example.com/announce"),
+					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "sub_incy_banner_text", "v39 banner"),
+					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "sub_incy_per_app_list", "com.a,com.b"),
+					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "sub_incy_fragment_length", "10-20"),
+					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "sub_incy_resolve_dns_ip", "1.1.1.1"),
+				),
+			},
+			// Update: rotate a quiet per-request field and two initRouter-frozen
+			// fields (both restart keys — the apply bounces the panel) and
+			// confirm the values stick.
+			{
+				Config: testAccProviderConfig() + `
+resource "threexui_panel_subscription" "test" {
+  sub_enable = true
+  sub_path   = "/sub/"
+  sub_port   = 2096
+
+  external_sub_user_agent  = "v2rayNG/1.9.1"
+  sub_happ_local_proxy_auth = "off"
+
+  sub_incy_app_auto_detect = false
+  sub_incy_banner_text     = "v39 banner v2"
+  sub_incy_announce_url    = "https://example.com/announce2"
+}`,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "external_sub_user_agent", "v2rayNG/1.9.1"),
+					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "sub_happ_local_proxy_auth", "off"),
+					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "sub_incy_app_auto_detect", "false"),
+					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "sub_incy_banner_text", "v39 banner v2"),
+					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "sub_incy_announce_url", "https://example.com/announce2"),
+				),
+			},
+			// Idempotency — in particular no residual diff from the
+			// EnsureURLScheme normalization in step 1.
+			{
+				Config: testAccProviderConfig() + `
+resource "threexui_panel_subscription" "test" {
+  sub_enable = true
+  sub_path   = "/sub/"
+  sub_port   = 2096
+
+  external_sub_user_agent  = "v2rayNG/1.9.1"
+  sub_happ_local_proxy_auth = "off"
+
+  sub_incy_app_auto_detect = false
+  sub_incy_banner_text     = "v39 banner v2"
+  sub_incy_announce_url    = "https://example.com/announce2"
+}`,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}

@@ -66,6 +66,10 @@ type InboundDokodemoSettingsModel struct {
 	Network        types.String `tfsdk:"network"`
 	AllowedNetwork types.String `tfsdk:"allowed_network"`
 	FollowRedirect types.Bool   `tfsdk:"follow_redirect"`
+	// tun-only (xray-core 26.9.30 / 3x-ui v3.9.0+); never expanded or flattened
+	// for dokodemo-door/tunnel.
+	AutoSystemDnsToGateway types.Bool `tfsdk:"auto_system_dns_to_gateway"`
+	AutoSystemWfpBlockLeak types.List `tfsdk:"auto_system_wfp_block_leak"` // list of string
 }
 
 type InboundMixedSettingsModel struct {
@@ -477,6 +481,24 @@ func inboundSettingsBlockSchemas() map[string]schema.Block {
 						boolplanmodifier.UseStateForUnknown(),
 					},
 				},
+				"auto_system_dns_to_gateway": schema.BoolAttribute{
+					Optional: true, Computed: true,
+					Description: "Route the system DNS through the TUN gateway (Linux). tun protocol only " +
+						"(xray-core 26.9.30 / 3x-ui v3.9.0+); ignored for dokodemo-door/tunnel.",
+					PlanModifiers: []planmodifier.Bool{
+						boolplanmodifier.UseStateForUnknown(),
+					},
+				},
+				"auto_system_wfp_block_leak": schema.ListAttribute{
+					Optional:    true,
+					Computed:    true,
+					ElementType: types.StringType,
+					Description: "WFP leak-block rules (e.g. \"dns\", \"misconfigtun\"; Windows). tun protocol only " +
+						"(xray-core 26.9.30 / 3x-ui v3.9.0+); ignored for dokodemo-door/tunnel.",
+					PlanModifiers: []planmodifier.List{
+						listplanmodifier.UseStateForUnknown(),
+					},
+				},
 			},
 		},
 		"hysteria_settings": schema.SingleNestedBlock{
@@ -831,7 +853,7 @@ func expandDokodemoInboundSettings(protocol string, m *InboundDokodemoSettingsMo
 		return nil
 	}
 	if protocol == "tunnel" || protocol == "tun" {
-		return expandTunnelInboundSettings(m)
+		return expandTunnelInboundSettings(protocol, m)
 	}
 	out := map[string]any{}
 	if !m.Address.IsNull() && !m.Address.IsUnknown() {
@@ -860,7 +882,7 @@ func expandDokodemoInboundSettings(protocol string, m *InboundDokodemoSettingsMo
 	return out
 }
 
-func expandTunnelInboundSettings(m *InboundDokodemoSettingsModel) map[string]any {
+func expandTunnelInboundSettings(protocol string, m *InboundDokodemoSettingsModel) map[string]any {
 	out := map[string]any{}
 
 	if address, ok := firstKnownString(m.RewriteAddress, m.Address); ok {
@@ -888,6 +910,17 @@ func expandTunnelInboundSettings(m *InboundDokodemoSettingsModel) map[string]any
 	}
 	if !m.FollowRedirect.IsNull() && !m.FollowRedirect.IsUnknown() {
 		out["follow_redirect"] = m.FollowRedirect.ValueBool()
+	}
+	// tun-only wire keys (xray-core 26.9.30 / 3x-ui v3.9.0+): sending them on a
+	// tunnel inbound would store options xray's dokodemo/tunnel config ignores.
+	if protocol == "tun" {
+		if !m.AutoSystemDnsToGateway.IsNull() && !m.AutoSystemDnsToGateway.IsUnknown() {
+			out["autoSystemDnsToGateway"] = m.AutoSystemDnsToGateway.ValueBool()
+		}
+		if !m.AutoSystemWfpBlockLeak.IsNull() && !m.AutoSystemWfpBlockLeak.IsUnknown() &&
+			len(m.AutoSystemWfpBlockLeak.Elements()) > 0 {
+			out["autoSystemWfpBlockLeak"] = typesListToAnySlice(m.AutoSystemWfpBlockLeak)
+		}
 	}
 	return out
 }
@@ -1336,6 +1369,23 @@ func flattenDokodemoInboundSettings(protocol string, data map[string]any) *Inbou
 		m.FollowRedirect = types.BoolValue(v)
 	} else {
 		m.FollowRedirect = types.BoolNull()
+	}
+	// tun-only wire keys (xray-core 26.9.30 / 3x-ui v3.9.0+): never present on a
+	// dokodemo-door/tunnel settings blob, so those protocols flatten to null.
+	if protocol == "tun" {
+		if v, ok := data["autoSystemDnsToGateway"].(bool); ok {
+			m.AutoSystemDnsToGateway = types.BoolValue(v)
+		} else {
+			m.AutoSystemDnsToGateway = types.BoolNull()
+		}
+		if v, ok := data["autoSystemWfpBlockLeak"]; ok {
+			m.AutoSystemWfpBlockLeak = anySliceToTypesList(v)
+		} else {
+			m.AutoSystemWfpBlockLeak = types.ListNull(types.StringType)
+		}
+	} else {
+		m.AutoSystemDnsToGateway = types.BoolNull()
+		m.AutoSystemWfpBlockLeak = types.ListNull(types.StringType)
 	}
 	return m
 }

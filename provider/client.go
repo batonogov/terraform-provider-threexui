@@ -464,6 +464,27 @@ func (c *Client) UpdateInbound(ctx context.Context, inbound *Inbound) (*Inbound,
 	return &out, nil
 }
 
+// SetInboundEnable flips only the enable flag of an inbound via the
+// dedicated POST /panel/api/inbounds/setEnable/:id endpoint. Since 3x-ui
+// v3.9.0, UpdateInbound silently restores the stored enable flag (the posted
+// value is ignored unless the request is a master→node sync —
+// 3x-ui-3.9.0/internal/web/service/inbound.go:1851-1862), so an enable change
+// must go through this endpoint. It exists on every supported panel (present
+// in the v3.3.0 snapshot, controller/inbound.go:74), so no version gate is
+// needed. The handler answers the standard envelope with a nil obj; when the
+// flip requires it, the panel only arms its own deferred restart flag
+// (XrayService.SetToNeedRestart) rather than restarting inline, so the
+// resource's restart_xray handling is unaffected.
+func (c *Client) SetInboundEnable(ctx context.Context, id int, enable bool) error {
+	if id == 0 {
+		return errors.New("inbound id is required for setEnable")
+	}
+	relPath := fmt.Sprintf("panel/api/inbounds/setEnable/%d", id)
+	form := url.Values{}
+	form.Set("enable", strconv.FormatBool(enable))
+	return c.doFormRetryable(ctx, http.MethodPost, relPath, form, nil)
+}
+
 func (c *Client) DeleteInbound(ctx context.Context, id int) error {
 	if id == 0 {
 		return errors.New("inbound id is required for delete")
@@ -1641,6 +1662,10 @@ func inboundToForm(in *Inbound) url.Values {
 	// is what keeps a non-round-trippable 0 out of the request.
 	form.Set("trafficResetDay", strconv.Itoa(in.TrafficResetDay))
 	form.Set("disableFlow", strconv.FormatBool(in.DisableFlow))
+	// excludeFromSub (v3.9.0+) is an unknown form key on older panels, where
+	// gin silently ignores it — same contract as trafficResetDay/disableFlow
+	// above. Sent unconditionally so the value round-trips on v3.9.0+.
+	form.Set("excludeFromSub", strconv.FormatBool(in.ExcludeFromSub))
 	return form
 }
 

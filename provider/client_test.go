@@ -648,6 +648,87 @@ func TestAddInboundDoesNotRetryOn5xx(t *testing.T) {
 	}
 }
 
+func TestSetInboundEnableSendsFormPayload(t *testing.T) {
+	var calls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/panel/api/inbounds/setEnable/7" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		atomic.AddInt32(&calls, 1)
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST, got %s", r.Method)
+		}
+		if ct := r.Header.Get("Content-Type"); ct != "application/x-www-form-urlencoded" {
+			t.Errorf("expected form content type, got %q", ct)
+		}
+		if err := r.ParseForm(); err != nil {
+			t.Errorf("ParseForm: %v", err)
+		}
+		if got := r.Form.Get("enable"); got != "false" {
+			t.Errorf("expected enable=false form value, got %q", got)
+		}
+		// The panel answers the standard envelope with a nil obj.
+		w.Write(okResponse(nil))
+	}))
+	defer srv.Close()
+
+	client := newTestClient(t, srv.URL)
+	if err := client.SetInboundEnable(context.Background(), 7, false); err != nil {
+		t.Fatalf("SetInboundEnable: %v", err)
+	}
+	if got := atomic.LoadInt32(&calls); got != 1 {
+		t.Fatalf("expected exactly 1 call, got %d", got)
+	}
+}
+
+func TestSetInboundEnableRequiresID(t *testing.T) {
+	client := newTestClient(t, "http://127.0.0.1:0")
+	if err := client.SetInboundEnable(context.Background(), 0, true); err == nil {
+		t.Fatalf("expected an error for id=0")
+	}
+}
+
+func TestSetInboundEnableSurfacesFailureEnvelope(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write(failResponse("port already in use"))
+	}))
+	defer srv.Close()
+
+	client := newTestClient(t, srv.URL)
+	if err := client.SetInboundEnable(context.Background(), 7, true); err == nil {
+		t.Fatalf("expected the failure envelope to surface as an error")
+	}
+}
+
+func TestSetInboundEnableRetriesTransient5xx(t *testing.T) {
+	// setEnable is idempotent server-side (SetInboundEnable early-returns
+	// when the flag already matches), so the standard transient-5xx retry
+	// is safe here.
+	var calls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/panel/api/inbounds/setEnable/7" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		n := atomic.AddInt32(&calls, 1)
+		if n == 1 {
+			http.Error(w, "transient", http.StatusInternalServerError)
+			return
+		}
+		w.Write(okResponse(nil))
+	}))
+	defer srv.Close()
+
+	client := newTestClient(t, srv.URL)
+	if err := client.SetInboundEnable(context.Background(), 7, true); err != nil {
+		t.Fatalf("SetInboundEnable after 500-200 failed: %v", err)
+	}
+	if got := atomic.LoadInt32(&calls); got != 2 {
+		t.Fatalf("expected 2 calls (initial + 1 retry), got %d", got)
+	}
+}
+
 func TestUpdateUserDoesNotRetryOn5xx(t *testing.T) {
 	// Retrying credentials change with stale old creds (the second call
 	// would still send oldUsername/oldPassword from the first attempt) is

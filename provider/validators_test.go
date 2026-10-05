@@ -4,8 +4,12 @@ import (
 	"context"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 )
 
 // testStringValidator is a helper that runs a StringValidator against a given
@@ -430,5 +434,84 @@ func TestDurationValidator_SkipsNullAndUnknown(t *testing.T) {
 	v.ValidateString(context.Background(), req, resp)
 	if resp.Diagnostics.HasError() {
 		t.Error("durationValidator should skip null values")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// resetWeekdayExclusiveValidator
+// ---------------------------------------------------------------------------
+
+// inboundClientConfig builds a tfsdk.Config for threexui_inbound_client with
+// the given renewal attributes set; every other attribute is a typed null.
+func inboundClientConfig(t *testing.T, renewal map[string]int64) tfsdk.Config {
+	t.Helper()
+	r := &InboundClientResource{}
+	var schemaResp resource.SchemaResponse
+	r.Schema(context.Background(), resource.SchemaRequest{}, &schemaResp)
+	ctx := context.Background()
+	objType := schemaResp.Schema.Type().TerraformType(ctx).(tftypes.Object)
+	out := map[string]tftypes.Value{}
+	for k := range schemaResp.Schema.Attributes {
+		out[k] = tftypes.NewValue(objType.AttributeTypes[k], nil)
+	}
+	for k, v := range renewal {
+		out[k] = tftypes.NewValue(tftypes.Number, v)
+	}
+	return tfsdk.Config{
+		Schema: schemaResp.Schema,
+		Raw:    tftypes.NewValue(objType, out),
+	}
+}
+
+func TestResetWeekdayExclusiveValidator(t *testing.T) {
+	v := resetWeekdayExclusiveValidator{}
+	cases := []struct {
+		name    string
+		config  map[string]int64
+		wantErr bool
+	}{
+		{"weekday alone", map[string]int64{"reset_weekday": 3}, false},
+		{"weekday with zero reset and reset_day", map[string]int64{"reset_weekday": 7, "reset": 0, "reset_day": 0}, false},
+		{"weekday disabled with rolling reset", map[string]int64{"reset_weekday": 0, "reset": 30}, false},
+		{"weekday disabled with reset_day", map[string]int64{"reset_weekday": 0, "reset_day": 15}, false},
+		{"weekday conflicts with reset", map[string]int64{"reset_weekday": 1, "reset": 30}, true},
+		{"weekday conflicts with reset_day", map[string]int64{"reset_weekday": 5, "reset_day": 15}, true},
+		{"reset without weekday", map[string]int64{"reset": 30}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			config := inboundClientConfig(t, tc.config)
+			var weekday types.Int64
+			diags := config.GetAttribute(context.Background(), path.Root("reset_weekday"), &weekday)
+			if diags.HasError() {
+				t.Fatalf("reading reset_weekday from config: %v", diags)
+			}
+			resp := &validator.Int64Response{}
+			v.ValidateInt64(context.Background(), validator.Int64Request{
+				ConfigValue: weekday,
+				Config:      config,
+			}, resp)
+			if gotErr := resp.Diagnostics.HasError(); gotErr != tc.wantErr {
+				t.Errorf("wantErr=%v, got diagnostics: %v", tc.wantErr, resp.Diagnostics)
+			}
+		})
+	}
+}
+
+func TestResetWeekdayExclusiveValidator_SkipsNullAndUnknown(t *testing.T) {
+	v := resetWeekdayExclusiveValidator{}
+	if v.Description(t.Context()) == "" || v.MarkdownDescription(t.Context()) == "" {
+		t.Error("Description and MarkdownDescription must be non-empty")
+	}
+	config := inboundClientConfig(t, map[string]int64{"reset": 30})
+	for _, value := range []types.Int64{types.Int64Null(), types.Int64Unknown()} {
+		resp := &validator.Int64Response{}
+		v.ValidateInt64(context.Background(), validator.Int64Request{
+			ConfigValue: value,
+			Config:      config,
+		}, resp)
+		if resp.Diagnostics.HasError() {
+			t.Errorf("should skip %v, got: %v", value, resp.Diagnostics)
+		}
 	}
 }

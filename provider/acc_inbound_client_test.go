@@ -760,3 +760,58 @@ resource "threexui_inbound_client" "renewal" {
 		},
 	})
 }
+
+// TestAccInboundClientResetWeekday_v390 covers the v3.9.0 weekly calendar
+// renewal field end-to-end. reset_weekday is mutually exclusive with a
+// positive reset/reset_day upstream, so the config sets neither.
+func TestAccInboundClientResetWeekday_v390(t *testing.T) {
+	requireMinVersion(t, "v3.9.0")
+	config := testAccProviderConfig() + `
+resource "threexui_inbound" "weekday_host" {
+  port     = 25134
+  protocol = "vless"
+  remark   = "acc-client-weekday-v390"
+  enable   = true
+  vless_settings {
+    decryption = "none"
+  }
+  stream_settings {
+    network  = "tcp"
+    security = "reality"
+    reality_settings {
+      target       = "google.com:443"
+      server_names = ["google.com"]
+    }
+  }
+}
+
+resource "threexui_inbound_client" "weekday" {
+  inbound_id    = threexui_inbound.weekday_host.id
+  email         = "weekday-v390@test.com"
+  enable        = true
+  reset_weekday = 3
+  reset_max     = 5
+}
+`
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories(),
+		CheckDestroy:             testAccCheckInboundClientDestroyed,
+		Steps: []resource.TestStep{
+			{
+				Config: config,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("threexui_inbound_client.weekday", "reset_weekday", "3"),
+					resource.TestCheckResourceAttr("threexui_inbound_client.weekday", "reset_max", "5"),
+					resource.TestCheckResourceAttr("threexui_inbound_client.weekday", "reset", "0"),
+					resource.TestCheckResourceAttr("threexui_inbound_client.weekday", "reset_day", "0"),
+				),
+			},
+			{
+				Config:             config,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}

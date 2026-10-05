@@ -33,6 +33,7 @@ func TestHostGroupExpandFlatten(t *testing.T) {
 		HostHeader:             types.StringValue("example.com"),
 		Path:                   types.StringValue("/ws"),
 		Fingerprint:            types.StringValue("chrome"),
+		CipherSuites:           types.StringValue("TLS_AES_128_GCM_SHA256:TLS_CHACHA20_POLY1305_SHA256"),
 		OverrideSniFromAddress: types.BoolValue(true),
 		KeepSniBlank:           types.BoolValue(false),
 		VerifyPeerCertByName:   types.StringValue("example.com"),
@@ -94,6 +95,9 @@ func TestHostGroupExpandFlatten(t *testing.T) {
 	if hg.MihomoIpVersion != "ipv4-prefer" {
 		t.Fatalf("MihomoIpVersion: got %q", hg.MihomoIpVersion)
 	}
+	if hg.CipherSuites != "TLS_AES_128_GCM_SHA256:TLS_CHACHA20_POLY1305_SHA256" {
+		t.Fatalf("CipherSuites: got %q", hg.CipherSuites)
+	}
 
 	// Flatten back into a fresh model and spot-check.
 	flat := &HostGroupResourceModel{}
@@ -106,6 +110,9 @@ func TestHostGroupExpandFlatten(t *testing.T) {
 	}
 	if flat.Security.ValueString() != "tls" {
 		t.Fatalf("flatten Security: got %q", flat.Security)
+	}
+	if flat.CipherSuites.ValueString() != "TLS_AES_128_GCM_SHA256:TLS_CHACHA20_POLY1305_SHA256" {
+		t.Fatalf("flatten CipherSuites: got %q", flat.CipherSuites)
 	}
 	// inbound_ids round-trip
 	var ids []int64
@@ -127,6 +134,7 @@ func TestHostGroupModelToWire(t *testing.T) {
 		Security:               "reality",
 		Hosts:                  []string{"a.test"},
 		Alpn:                   []string{"h2"},
+		CipherSuites:           "TLS_AES_128_GCM_SHA256",
 		OverrideSniFromAddress: true,
 		MihomoIpVersion:        "dual",
 		ShuffleHost:            true,
@@ -141,7 +149,7 @@ func TestHostGroupModelToWire(t *testing.T) {
 	}
 	camelKeys := []string{
 		"groupId", "inboundIds", "remark", "sortOrder", "port", "security",
-		"overrideSniFromAddress", "mihomoIpVersion", "shuffleHost",
+		"cipherSuites", "overrideSniFromAddress", "mihomoIpVersion", "shuffleHost",
 	}
 	for _, k := range camelKeys {
 		if _, ok := m[k]; !ok {
@@ -899,5 +907,21 @@ func TestHostGroupResource_EmptyGroupIDError(t *testing.T) {
 	r.Delete(context.Background(), resource.DeleteRequest{State: state}, &delResp)
 	if !delResp.Diagnostics.HasError() {
 		t.Fatal("expected error on Delete with empty group_id")
+	}
+}
+
+// TestHostGroupCipherSuitesFlattenNull verifies an absent/empty cipherSuites
+// flattens to null (not ""), matching the other optional string attributes.
+func TestHostGroupCipherSuitesFlattenNull(t *testing.T) {
+	m := &HostGroupResourceModel{}
+	flattenHostGroupToModel(&HostGroup{GroupId: "grp-1", Remark: "r"}, m)
+	if !m.CipherSuites.IsNull() {
+		t.Fatalf("expected null cipher_suites, got %q", m.CipherSuites)
+	}
+
+	m2 := &HostGroupResourceModel{CipherSuites: types.StringNull()}
+	hg := hostGroupFromModel(context.Background(), m2)
+	if hg.CipherSuites != "" {
+		t.Fatalf("null cipher_suites must expand to empty string, got %q", hg.CipherSuites)
 	}
 }

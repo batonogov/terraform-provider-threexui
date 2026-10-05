@@ -223,6 +223,7 @@ resource "threexui_inbound" "mtproto" {
 - `traffic_reset` (Optional, String) - Traffic reset period. Default is `never`.
 - `traffic_reset_day` (Optional, Number) - Day of month (1-31) for monthly traffic resets. Only effective when `traffic_reset = "monthly"`. Added in 3x-ui v3.6.0; older panels report `0` (unsupported). `0` is rejected at plan time: the panel clamps any value below 1 up to 1, so a configured `0` could never round-trip.
 - `disable_flow` (Optional, Boolean) - Opt this inbound out of the panel's automatic XTLS Vision flow assignment. Added in 3x-ui v3.7.0; older panels report `false` (unsupported). **The panel blanks `flow` on every client of the inbound while this is `true`**, so do not combine it with a `threexui_inbound_client` that sets `flow` — see the note below.
+- `exclude_from_sub` (Optional, Boolean) - Keep the inbound operational but omit it from subscription output. Added in 3x-ui v3.9.0; older panels report `false` (unsupported).
 - `node_id` (Optional, Number) - 3x-ui v3 node ID for multi-node deployments. Leave unset for the local panel. Changing this value recreates the inbound because 3x-ui v3 does not support moving an existing inbound between nodes.
 - `restart_xray` (Optional, Boolean) - Restart Xray core after create, update, or delete operations. Default is `false`.
 - `sub_sort_index` (Optional, Number) - 1-based sort order of this inbound's links in subscription output (lower first; ties by id). Added in 3x-ui v3.3.1; ignored by older panels.
@@ -293,7 +294,7 @@ Settings for mixed (HTTP+SOCKS) proxy protocol.
   - `pre_shared_key` (Optional, String, Sensitive)
   - `allowed_ips` (Optional, List of String)
   - `keep_alive` (Optional, Number)
-- `clients` (Optional, Block List) - WireGuard multi-client peers (3x-ui v3.4.2+). Absent/empty on older panels. Each entry is one client device the server accepts, with its own keypair and traffic limits. Use EITHER `clients` OR the legacy `peer` for an inbound, not both — the panel treats them as separate models and populating both yields undefined behavior.
+- `clients` (Optional, Block List) - WireGuard multi-client peers (3x-ui v3.4.2+). Absent/empty on older panels. Each entry is one client device the server accepts, with its own keypair and traffic limits. Use EITHER `clients` OR the legacy `peer` for an inbound, not both — the panel treats them as separate models and populating both yields undefined behavior. Peer adds, edits and removals are applied per peer: on 3x-ui up to v3.8.5 they ride the inbound update; since v3.9.0 the panel silently ignores client changes in that payload, so the provider pushes them through the `/panel/api/clients/*` endpoints and re-reads the inbound.
   - `private_key` (Optional, String, Sensitive)
   - `public_key` (Optional, String)
   - `pre_shared_key` (Optional, String, Sensitive)
@@ -321,6 +322,8 @@ Used for both `tunnel` and `dokodemo-door` protocols.
 - `network` (Optional, String) - Network type.
 - `allowed_network` (Optional, String) - Tunnel allowed network on 3x-ui v3.0.2+. Mirrored with `network` for older panel compatibility.
 - `follow_redirect` (Optional, Boolean) - Follow redirect.
+- `auto_system_dns_to_gateway` (Optional, Boolean) - Route the system DNS through the TUN gateway (Linux). `tun` protocol only (xray-core 26.9.30 / 3x-ui v3.9.0+); ignored for `dokodemo-door`/`tunnel`.
+- `auto_system_wfp_block_leak` (Optional, List of String) - WFP leak-block rules, e.g. `["dns", "misconfigtun"]` (Windows). `tun` protocol only (xray-core 26.9.30 / 3x-ui v3.9.0+); ignored for `dokodemo-door`/`tunnel`.
 
 #### `hysteria_settings`
 
@@ -381,6 +384,8 @@ The provider creates an AmneziaWG inbound in two steps: first without this block
 
 ##### `clients` (Optional, Block List)
 
+~> **Note:** since 3x-ui v3.9.0 the panel silently ignores client changes in the inbound update payload (`keepStoredClients`), so peer adds, edits and removals are applied per peer through the `/panel/api/clients/*` endpoints after the inbound write, followed by a re-read; on older panels they ride the inbound update as before. One side effect of the endpoint path: a peer edit stamps a fresh `updated_at` on that peer (the provider plans it as unknown, so the apply stays consistent). Peer fields the panel allocates — derived keys, tunnel addresses — still only get filled when the peer is created with them blank on the client endpoints, so keep declaring `public_key`/`allowed_ips` explicitly.
+
 ~> **Note:** removing a peer — whether by deleting it from this block or by destroying the whole inbound — deletes it individually, so its `email` is freed and can be reused. This is deliberate: 3x-ui rewrites `settings.clients[]` without the peer, and drops the inbound-to-client links on delete, but in both cases keeps the client row, which carries a unique index on `email`. Without that step the address would stay occupied by a client no longer visible under any inbound, and reusing it would fail with `Duplicate email: <address>`. Two cases still leave rows behind: removing the inbound **outside Terraform** (the panel UI, or the API directly), and a create that fails after the inbound was already made — Terraform records no state for it, so nothing ever destroys it. In both, delete the leftover clients in the panel before reusing their emails. `wireguard_settings.clients` is handled the same way.
 
 - `email` (Optional+Computed, String) - Peer identifier. The panel keys traffic counters on it and requires a non-empty unique value, so set it even though the schema marks it Optional.
@@ -429,28 +434,30 @@ Typed MTProto server settings available on 3x-ui v3.3.0+. On v3.5.0+, per-client
 
 #### `tuic_settings` (Optional, Block)
 
-Typed TUIC v5 settings, available on 3x-ui v3.8.0+. TUIC is terminated by a bundled `tuic-server` sidecar (not xray-core) which relays into Xray, so per-client stats, routing and quotas work like any other protocol. Users live in this block — the same rule as `wireguard_settings.clients` and `amneziawg_settings.clients`, not `threexui_inbound_client`.
+Typed TUIC v5 settings, available on 3x-ui v3.8.0+. Since 3x-ui v3.9.0 TUIC is terminated by a native in-panel Go server (on v3.8.x a bundled `tuic-server` sidecar); either way it is not xray-core and relays into Xray, so per-client stats, routing and quotas work like any other protocol. Users live in this block — the same rule as `wireguard_settings.clients` and `amneziawg_settings.clients`, not `threexui_inbound_client`.
 
 - `server` (Optional, Block) - TUIC server parameters.
-- `clients` (Optional, Block List) - Users this server accepts. `id` (uuid) and `password` are **required**: the panel refuses a keyless or passwordless peer on every save and derives credentials only on the `/panel/api/clients` endpoints, which do not own these users.
+- `clients` (Optional, Block List) - Users this server accepts. `id` (uuid) and `password` are **required**: the panel refuses a keyless or passwordless peer on every save and only generates them when a user is created without them on the `/panel/api/clients` endpoints.
 
 ##### `server` (Optional, Block)
 
-Unlike AmneziaWG, the panel generates nothing here: the `certificate` / `private_key` inline PEM pair is operator-supplied (a save without them succeeds, but the sidecar instance will not come up), and every other field falls back to the panel's read-time defaults when omitted (`bbr`, `native`, `info`, 15, 3, 1500, `["h3", "spdy/3.1"]`).
+Unlike AmneziaWG, the panel generates nothing here: the `certificate` / `private_key` inline PEM pair is operator-supplied (a save without them succeeds, but the instance will not come up), and every other field falls back to the panel's read-time defaults when omitted (`bbr`, `native`, `info`, 15, 3, 1500, `["h3", "spdy/3.1"]`). Since 3x-ui v3.9.0 the panel validates this block on every save: unknown `congestion_control` / `udp_relay_mode` / `log_level` values are hard save errors, and `max_udp_relay_packet_size` between 65246 and 65507 is silently clamped to 65245 — the provider rejects all of these at plan time, including the aliases the panel rewrites (`reno` → `new_reno`, `warning` → `warn`), because a rewritten value could not round-trip.
 
 - `certificate` (Optional, String) - Server certificate (inline PEM).
 - `private_key` (Optional, String, Sensitive) - Server private key (inline PEM). An empty string is rejected — omit the attribute instead.
-- `congestion_control` (Optional, String) - `bbr`, `cubic`, or `new_reno`.
+- `congestion_control` (Optional, String) - `bbr`, `cubic`, or `new_reno`. The upstream `reno` alias is stored as `new_reno`, so it is rejected here.
 - `alpn` (Optional, List of String) - ALPN protocols.
 - `udp_relay_mode` (Optional, String) - `native` or `quic`.
 - `zero_rtt_handshake` (Optional, Boolean) - Enable 0-RTT handshake.
-- `log_level` (Optional, String) - `info`, `warn`, `error`, or `debug`.
+- `log_level` (Optional, String) - `info`, `warn`, `error`, or `debug`. The panel normalises case and the `warning` alias to `warn`, so only these canonical values are accepted.
 - `max_idle_time` (Optional, Number) - Max idle time in seconds.
 - `authentication_timeout` (Optional, Number) - Authentication timeout in seconds.
-- `max_udp_relay_packet_size` (Optional, Number) - Max UDP relay packet size in bytes.
+- `max_udp_relay_packet_size` (Optional, Number) - Max UDP relay packet size in bytes (1-65245). Values 65246-65507 are rejected at plan time: the panel silently clamps them to 65245, which cannot round-trip.
 - `sni` (Optional, String) - Server name indication override.
 
 ##### `clients` (Optional, Block List)
+
+~> **Note:** since 3x-ui v3.9.0 the panel silently ignores client changes in the inbound update payload (`keepStoredClients`), so user adds, edits and removals are applied per peer through the `/panel/api/clients/*` endpoints after the inbound write, followed by a re-read; on older panels they ride the inbound update as before. Two side effects of the endpoint path: an edited user gets a fresh `updated_at`, and a user whose `sub_id` was blank gets one generated by the panel (the provider plans both as unknown, so the apply stays consistent). Since v3.9.0 the panel also validates that every TUIC `id` is a parseable UUID unique within the inbound (`validateTuicIdentities`).
 
 - `email` (Required, String) - User email; keys the traffic counters (unique per panel).
 - `id` (Required, String) - User UUID. The panel accepts either `uuid` or `id` spelling on read; the provider always writes `id`.

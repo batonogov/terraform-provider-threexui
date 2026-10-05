@@ -1688,3 +1688,168 @@ func TestPanelGeneralRealityScanCandidates(t *testing.T) {
 		t.Fatalf("flatten: %#v", back.RealityScanCandidates)
 	}
 }
+
+// --- v3.9.0 subscription additions (externalSubUserAgent / subHappLocalProxyAuth / subIncy*) ---
+
+// TestPanelSubscriptionV39ExpandFlatten round-trips all 30 v3.9.0 subscription
+// fields through expand/flatten.
+func TestPanelSubscriptionV39ExpandFlatten(t *testing.T) {
+	m := &PanelSubscriptionModel{
+		SubHappLocalProxyAuth:      types.StringValue("auto"),
+		ExternalSubUserAgent:       types.StringValue("v2rayNG/1.8.5"),
+		SubIncyAppAutoDetect:       types.BoolValue(true),
+		SubIncyProfileDescription:  types.StringValue("desc"),
+		SubIncySortOrder:           types.StringValue("asc"),
+		SubIncySupportEmail:        types.StringValue("support@example.com"),
+		SubIncyAnnounceUrl:         types.StringValue("https://example.com/announce"),
+		SubIncyPremiumUrl:          types.StringValue("https://example.com/premium"),
+		SubIncyBannerText:          types.StringValue("banner"),
+		SubIncyBannerButtonText:    types.StringValue("upgrade"),
+		SubIncyBannerButtonUrl:     types.StringValue("https://example.com/buy"),
+		SubIncyBannerBgColor:       types.StringValue("#fff"),
+		SubIncyBannerButtonColor:   types.StringValue("#000"),
+		SubIncyHideUrl:             types.StringValue("hide"),
+		SubIncyHideCheck:           types.StringValue("check"),
+		SubIncyNoLimitEnabled:      types.StringValue("true"),
+		SubIncyPerAppEnable:        types.StringValue("true"),
+		SubIncyPerAppMode:          types.StringValue("on"),
+		SubIncyPerAppList:          types.StringValue("com.a,com.b"),
+		SubIncyFragmentationEnable: types.StringValue("true"),
+		SubIncyFragmentLength:      types.StringValue("10-20"),
+		SubIncyFragmentInterval:    types.StringValue("5-10"),
+		SubIncyFragmentPackets:     types.StringValue("tlshello"),
+		SubIncyNoisesEnable:        types.StringValue("false"),
+		SubIncyNoisesType:          types.StringValue("rand"),
+		SubIncyNoisesPacket:        types.StringValue("10-20"),
+		SubIncyNoisesDelay:         types.StringValue("1-5"),
+		SubIncyResolveEnable:       types.StringValue("true"),
+		SubIncyResolveDnsDomain:    types.StringValue("https://dns.example.com"),
+		SubIncyResolveDnsIp:        types.StringValue("1.1.1.1"),
+	}
+	out := expandPanelSubscription(m)
+	for key, want := range map[string]any{
+		"subHappLocalProxyAuth":      "auto",
+		"externalSubUserAgent":       "v2rayNG/1.8.5",
+		"subIncyAppAutoDetect":       true,
+		"subIncyProfileDescription":  "desc",
+		"subIncySortOrder":           "asc",
+		"subIncySupportEmail":        "support@example.com",
+		"subIncyAnnounceUrl":         "https://example.com/announce",
+		"subIncyPremiumUrl":          "https://example.com/premium",
+		"subIncyBannerText":          "banner",
+		"subIncyBannerButtonText":    "upgrade",
+		"subIncyBannerButtonUrl":     "https://example.com/buy",
+		"subIncyBannerBgColor":       "#fff",
+		"subIncyBannerButtonColor":   "#000",
+		"subIncyHideUrl":             "hide",
+		"subIncyHideCheck":           "check",
+		"subIncyNoLimitEnabled":      "true",
+		"subIncyPerAppEnable":        "true",
+		"subIncyPerAppMode":          "on",
+		"subIncyPerAppList":          "com.a,com.b",
+		"subIncyFragmentationEnable": "true",
+		"subIncyFragmentLength":      "10-20",
+		"subIncyFragmentInterval":    "5-10",
+		"subIncyFragmentPackets":     "tlshello",
+		"subIncyNoisesEnable":        "false",
+		"subIncyNoisesType":          "rand",
+		"subIncyNoisesPacket":        "10-20",
+		"subIncyNoisesDelay":         "1-5",
+		"subIncyResolveEnable":       "true",
+		"subIncyResolveDnsDomain":    "https://dns.example.com",
+		"subIncyResolveDnsIp":        "1.1.1.1",
+	} {
+		if got := out[key]; got != want {
+			t.Errorf("expand[%s] = %#v, want %#v", key, got, want)
+		}
+	}
+
+	back := flattenPanelSubscription(out)
+	if back.SubHappLocalProxyAuth.ValueString() != "auto" {
+		t.Errorf("flatten sub_happ_local_proxy_auth: %#v", back.SubHappLocalProxyAuth)
+	}
+	if back.ExternalSubUserAgent.ValueString() != "v2rayNG/1.8.5" {
+		t.Errorf("flatten external_sub_user_agent: %#v", back.ExternalSubUserAgent)
+	}
+	if !back.SubIncyAppAutoDetect.ValueBool() {
+		t.Errorf("flatten sub_incy_app_auto_detect: %#v", back.SubIncyAppAutoDetect)
+	}
+	if back.SubIncyResolveDnsIp.ValueString() != "1.1.1.1" {
+		t.Errorf("flatten sub_incy_resolve_dns_ip: %#v", back.SubIncyResolveDnsIp)
+	}
+}
+
+// TestPanelSubscriptionV39EmptyStringIsMeaningful pins the entity.go contract:
+// for the Incy strings "" omits the header (the subscriber's own app setting
+// is left alone), so an explicitly configured empty string must expand to ""
+// and flatten must not turn "" into null.
+func TestPanelSubscriptionV39EmptyStringIsMeaningful(t *testing.T) {
+	out := expandPanelSubscription(&PanelSubscriptionModel{
+		SubIncyBannerText: types.StringValue(""),
+	})
+	v, ok := out["subIncyBannerText"]
+	if !ok {
+		t.Fatal("an explicitly configured empty string must still be sent (it clears the header)")
+	}
+	if v != "" {
+		t.Fatalf("expand[subIncyBannerText] = %#v, want %#v", v, "")
+	}
+	if got := flattenPanelSubscription(map[string]any{"subIncyBannerText": ""}).SubIncyBannerText; got.IsNull() {
+		t.Fatal("flatten must read back an empty string, not null")
+	}
+	// A pre-v3.9.0 panel omits the key entirely: the attribute stays null.
+	if got := flattenPanelSubscription(map[string]any{}).SubIncyBannerText; !got.IsNull() {
+		t.Fatalf("an absent key must flatten to null, got %#v", got)
+	}
+}
+
+// TestPanelSettingsNeedRestart_SubServerV39Keys: subHappLocalProxyAuth and the
+// whole subIncy* block are read once inside (*sub.Server).initRouter() and
+// frozen into the SUBController (3x-ui-3.9.0/internal/sub/sub.go:256-286), so
+// every one of them must restart the panel on change. externalSubUserAgent is
+// read live on every external-subscription fetch
+// (internal/sub/external_subscription.go:183-187) and must NOT restart — the
+// same per-request exception as subURI/subJsonURI/subClashURI.
+func TestPanelSettingsNeedRestart_SubServerV39Keys(t *testing.T) {
+	stringKeys := []string{
+		"subHappLocalProxyAuth",
+		"subIncyProfileDescription", "subIncySortOrder", "subIncySupportEmail",
+		"subIncyAnnounceUrl", "subIncyPremiumUrl",
+		"subIncyBannerText", "subIncyBannerButtonText", "subIncyBannerButtonUrl",
+		"subIncyBannerBgColor", "subIncyBannerButtonColor",
+		"subIncyHideUrl", "subIncyHideCheck",
+		"subIncyNoLimitEnabled", "subIncyPerAppEnable", "subIncyPerAppMode", "subIncyPerAppList",
+		"subIncyFragmentationEnable", "subIncyFragmentLength", "subIncyFragmentInterval", "subIncyFragmentPackets",
+		"subIncyNoisesEnable", "subIncyNoisesType", "subIncyNoisesPacket", "subIncyNoisesDelay",
+		"subIncyResolveEnable", "subIncyResolveDnsDomain", "subIncyResolveDnsIp",
+	}
+	for _, key := range stringKeys {
+		if !panelSettingsNeedRestart(map[string]any{key: "old"}, map[string]any{key: "new"}) {
+			t.Errorf("%s is frozen by initRouter and must restart the panel", key)
+		}
+	}
+	if !panelSettingsNeedRestart(map[string]any{"subIncyAppAutoDetect": false}, map[string]any{"subIncyAppAutoDetect": true}) {
+		t.Error("subIncyAppAutoDetect is frozen by initRouter and must restart the panel")
+	}
+	if panelSettingsNeedRestart(
+		map[string]any{"externalSubUserAgent": "v2rayNG/1.8.5"},
+		map[string]any{"externalSubUserAgent": "v2rayNG/1.9.0"},
+	) {
+		t.Error("externalSubUserAgent is read per request and must not restart the panel")
+	}
+}
+
+// On a pre-v3.9.0 panel none of the v3.9.0 keys exist in /setting/all, so they
+// must never trigger a restart (the value cannot be stored either).
+func TestPanelSettingsNeedRestart_V39KeysUnknownToPanel(t *testing.T) {
+	old := map[string]any{"webPort": float64(2053)}
+	desired := map[string]any{
+		"externalSubUserAgent":  "v2rayNG/1.9.0",
+		"subHappLocalProxyAuth": "auto",
+		"subIncyAppAutoDetect":  true,
+		"subIncyBannerText":     "banner",
+	}
+	if panelSettingsNeedRestart(old, desired) {
+		t.Error("keys unknown to the panel must never restart")
+	}
+}

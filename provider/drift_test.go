@@ -815,6 +815,8 @@ func TestDriftClientFields(t *testing.T) {
 		// v3.7.0 calendar-day renewals + per-client traffic reset cycle.
 		"resetDay": true, "resetMax": true,
 		"trafficReset": true, "trafficResetDay": true,
+		// v3.9.0 weekly calendar renewals (reset_weekday on threexui_inbound_client).
+		"resetWeekday": true,
 	}
 
 	dir := latestSnapshotDir(t)
@@ -955,6 +957,25 @@ func TestDriftAllSettingFields(t *testing.T) {
 		"subHappPingType": true, "subHappAutoConnect": true,
 		"subHappAutoConnectType": true, "subHappPerAppMode": true,
 		"subHappPerAppList": true,
+		// v3.9.0 subscription additions (threexui_panel_subscription):
+		// externalSubUserAgent (per-request external-sub fetch User-Agent),
+		// subHappLocalProxyAuth (Happ block completion) and the Incy client
+		// customization block.
+		"externalSubUserAgent": true, "subHappLocalProxyAuth": true,
+		"subIncyAppAutoDetect": true, "subIncyProfileDescription": true,
+		"subIncySortOrder": true, "subIncySupportEmail": true,
+		"subIncyAnnounceUrl": true, "subIncyPremiumUrl": true,
+		"subIncyBannerText": true, "subIncyBannerButtonText": true,
+		"subIncyBannerButtonUrl": true, "subIncyBannerBgColor": true,
+		"subIncyBannerButtonColor": true, "subIncyHideUrl": true,
+		"subIncyHideCheck": true, "subIncyNoLimitEnabled": true,
+		"subIncyPerAppEnable": true, "subIncyPerAppMode": true,
+		"subIncyPerAppList": true, "subIncyFragmentationEnable": true,
+		"subIncyFragmentLength": true, "subIncyFragmentInterval": true,
+		"subIncyFragmentPackets": true, "subIncyNoisesEnable": true,
+		"subIncyNoisesType": true, "subIncyNoisesPacket": true,
+		"subIncyNoisesDelay": true, "subIncyResolveEnable": true,
+		"subIncyResolveDnsDomain": true, "subIncyResolveDnsIp": true,
 	}
 
 	// Fields intentionally not managed by the provider.
