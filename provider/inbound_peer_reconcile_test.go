@@ -94,6 +94,17 @@ func TestDiffInboundOwnedPeers(t *testing.T) {
 			observed: []any{peer("a", "publicKey", "pk", "updated_at", float64(2000))},
 		},
 		{
+			name:     "blank plan subId carries no constraint",
+			plan:     []any{peer("a", "publicKey", "pk", "subId", "")},
+			observed: []any{peer("a", "publicKey", "pk", "subId", "panel-generated")},
+		},
+		{
+			name:       "non-blank plan subId still compares",
+			plan:       []any{peer("a", "publicKey", "pk", "subId", "mine")},
+			observed:   []any{peer("a", "publicKey", "pk", "subId", "panel-generated")},
+			wantUpdate: []string{"a"},
+		},
+		{
 			name:     "new peer is added",
 			plan:     []any{peer("a"), peer("b")},
 			observed: []any{peer("a")},
@@ -320,6 +331,61 @@ func TestReconcileInboundOwnedPeers(t *testing.T) {
 		}
 	})
 
+	t.Run("a stale first read does not fire spurious endpoint calls", func(t *testing.T) {
+		// ≤ v3.8.5: the wholesale update already persisted the plan's peers,
+		// but the first read after it can still serve the pre-update snapshot
+		// (#157). The grace reads must let the committed write become visible
+		// instead of pushing a spurious add the panel would reject with
+		// "Duplicate email".
+		var getCalls, addCalls, updateCalls, delCalls atomic.Int32
+		stale := map[string]any{
+			"id": 7, "remark": "r", "enable": true, "port": 25070, "protocol": "wireguard",
+			"settings": `{"clients":[{"email":"a@t.com","publicKey":"pkA","comment":"old","allowedIPs":["10.0.0.2/32"]}]}`,
+			"sniffing": "{}", "streamSettings": "{}",
+		}
+		fresh := map[string]any{
+			"id": 7, "remark": "r", "enable": true, "port": 25070, "protocol": "wireguard",
+			"settings": `{"clients":[{"email":"a@t.com","publicKey":"pkA","comment":"new","allowedIPs":["10.0.0.2/32"]},{"email":"b@t.com","publicKey":"pkB","allowedIPs":["10.0.0.3/32"]}]}`,
+			"sniffing": "{}", "streamSettings": "{}",
+		}
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			switch {
+			case req.URL.Path == "/panel/api/clients/list":
+				_, _ = w.Write(okResponse([]any{}))
+			case req.URL.Path == "/panel/api/inbounds/get/7":
+				if getCalls.Add(1) == 1 {
+					_, _ = w.Write(okResponse(stale))
+				} else {
+					_, _ = w.Write(okResponse(fresh))
+				}
+			case req.URL.Path == "/panel/api/clients/add":
+				addCalls.Add(1)
+				_, _ = w.Write(okResponse(nil))
+			case strings.HasPrefix(req.URL.Path, "/panel/api/clients/update/"):
+				updateCalls.Add(1)
+				_, _ = w.Write(okResponse(nil))
+			case strings.HasPrefix(req.URL.Path, "/panel/api/clients/del/"):
+				delCalls.Add(1)
+				_, _ = w.Write(okResponse(nil))
+			default:
+				w.WriteHeader(http.StatusNotFound)
+			}
+		}))
+		defer srv.Close()
+
+		r := &InboundResource{client: newTestClient(t, srv.URL)}
+		got, err := r.reconcileInboundOwnedPeers(context.Background(), 7, "wireguard", planSettings, &Inbound{ID: 7, Settings: stale["settings"].(string)})
+		if err != nil {
+			t.Fatalf("reconcile: %v", err)
+		}
+		if n := addCalls.Load() + updateCalls.Load() + delCalls.Load(); n != 0 {
+			t.Errorf("expected no client endpoint calls once the fresh read arrives, got %d", n)
+		}
+		if clients := settingsClientsList(got.Settings); len(clients) != 2 {
+			t.Errorf("expected the fresh 2-peer read back, got %v", clients)
+		}
+	})
+
 	t.Run("removal to zero", func(t *testing.T) {
 		srv := newPeerReconcileServer(t, "amneziawg", []map[string]any{
 			{"email": "a@t.com", "publicKey": "pkA"},
@@ -358,6 +424,13 @@ func TestReconcileInboundOwnedPeers(t *testing.T) {
 			switch req.URL.Path {
 			case "/panel/api/clients/list":
 				_, _ = w.Write(okResponse([]any{}))
+			case "/panel/api/inbounds/get/7":
+				// Never gains the plan's peers, so the reconciliation fires.
+				_, _ = w.Write(okResponse(map[string]any{
+					"id": 7, "remark": "r", "enable": true, "port": 25070,
+					"protocol": "wireguard", "settings": `{"clients":[{"email":"a@t.com","publicKey":"pkA","comment":"old"}]}`,
+					"sniffing": "{}", "streamSettings": "{}",
+				}))
 			case "/panel/api/clients/add":
 				_, _ = w.Write(failResponse("Duplicate email: a@t.com"))
 			default:
@@ -465,8 +538,9 @@ func TestEditedOwnedPeerMarks(t *testing.T) {
 			t.Fatalf("expected marks for exactly one peer, got %v", got)
 		}
 		attrs := got[0]
-		// private_key is null in the fixture; created_at/allowed_ips are set.
-		want := []string{"updated_at", "private_key"}
+		// private_key, sub_id and traffic_reset_day are null/zero in the
+		// fixture; created_at/allowed_ips/traffic_reset are set.
+		want := []string{"updated_at", "private_key", "sub_id", "traffic_reset_day"}
 		if !equalStringSlices(attrs, want) {
 			t.Fatalf("peer 0 marks = %v, want %v", attrs, want)
 		}
@@ -487,33 +561,33 @@ func TestEditedOwnedPeerMarks(t *testing.T) {
 		if len(got) != 1 {
 			t.Fatalf("expected marks for exactly one peer, got %v", got)
 		}
-		want := []string{"private_key", "public_key", "allowed_ips"}
+		want := []string{"private_key", "public_key", "allowed_ips", "sub_id"}
 		if !equalStringSlices(got[0], want) {
 			t.Fatalf("peer 0 marks = %v, want %v", got[0], want)
 		}
 	})
 
-	t.Run("edited tuic peer marks updated_at and an empty sub_id", func(t *testing.T) {
+	t.Run("edited tuic peer marks updated_at and the empty panel-rewritten fields", func(t *testing.T) {
 		state := tuic(tuicPeerModel("a", "old", "", 500))
 		plan := tuic(tuicPeerModel("a", "new", "", 500))
 		got := editedOwnedPeerMarks("tuic", state, plan)
 		if len(got) != 1 {
 			t.Fatalf("expected marks for exactly one peer, got %v", got)
 		}
-		want := []string{"updated_at", "sub_id"}
+		want := []string{"updated_at", "sub_id", "traffic_reset", "traffic_reset_day"}
 		if !equalStringSlices(got[0], want) {
 			t.Fatalf("peer 0 marks = %v, want %v", got[0], want)
 		}
 	})
 
-	t.Run("edited tuic peer with a stored sub_id marks only updated_at", func(t *testing.T) {
+	t.Run("edited tuic peer with a stored sub_id marks only the normalised fields", func(t *testing.T) {
 		state := tuic(tuicPeerModel("a", "old", "sub-123", 500))
 		plan := tuic(tuicPeerModel("a", "new", "sub-123", 500))
 		got := editedOwnedPeerMarks("tuic", state, plan)
 		if len(got) != 1 {
 			t.Fatalf("expected marks for exactly one peer, got %v", got)
 		}
-		want := []string{"updated_at"}
+		want := []string{"updated_at", "traffic_reset", "traffic_reset_day"}
 		if !equalStringSlices(got[0], want) {
 			t.Fatalf("peer 0 marks = %v, want %v", got[0], want)
 		}
@@ -523,7 +597,7 @@ func TestEditedOwnedPeerMarks(t *testing.T) {
 		state := tuic(tuicPeerModel("a", "old", "sub-123", 0))
 		plan := tuic(tuicPeerModel("a", "new", "sub-123", 0))
 		got := editedOwnedPeerMarks("tuic", state, plan)
-		want := []string{"updated_at", "created_at"}
+		want := []string{"updated_at", "created_at", "traffic_reset", "traffic_reset_day"}
 		if !equalStringSlices(got[0], want) {
 			t.Fatalf("peer 0 marks = %v, want %v", got[0], want)
 		}
@@ -667,6 +741,9 @@ type v390InboundServer struct {
 	settings map[string]any
 	remark   string
 	enable   bool
+	// dropEmptyClientsKey simulates panels whose settings lose the clients
+	// key entirely once the last peer is deleted.
+	dropEmptyClientsKey bool
 
 	updateCalls    atomic.Int32
 	setEnableCalls atomic.Int32
@@ -747,7 +824,12 @@ func (s *v390InboundServer) handle(w http.ResponseWriter, r *http.Request) {
 		clients, _ := s.settings["clients"].([]any)
 		for i, c := range clients {
 			if m, ok := c.(map[string]any); ok && m["email"] == email {
-				s.settings["clients"] = append(clients[:i], clients[i+1:]...)
+				remaining := append(clients[:i], clients[i+1:]...)
+				if len(remaining) == 0 && s.dropEmptyClientsKey {
+					delete(s.settings, "clients")
+				} else {
+					s.settings["clients"] = remaining
+				}
 				s.delCalls.Add(1)
 				_, _ = w.Write(okResponse(nil))
 				return
@@ -919,6 +1001,107 @@ func TestInboundResourceUpdateRemovesLastPeerOnV390(t *testing.T) {
 // persists the posted peers on every panel, so the reconciliation must stay
 // silent; if the panel ever drops a peer on create, the reconciliation
 // re-adds it through the client endpoint.
+// TestAlignBlocksWithPlanRestoresEmptyPeerBlocks pins the removal-to-zero
+// round-trip: an empty wireguard_settings/tuic_settings block comes back from
+// the panel as settings "{}", which flattens to nil — the declared block must
+// be restored or the apply fails with "was present, but now absent".
+func TestAlignBlocksWithPlanRestoresEmptyPeerBlocks(t *testing.T) {
+	t.Run("wireguard block restored when plan declares it", func(t *testing.T) {
+		state := &InboundResourceModel{}
+		plan := &InboundResourceModel{WireguardSettings: &InboundWireguardSettingsModel{}}
+		alignBlocksWithPlan(state, plan)
+		if state.WireguardSettings == nil {
+			t.Fatal("expected the wireguard block restored")
+		}
+		if !state.WireguardSettings.MTU.IsNull() {
+			t.Errorf("MTU must be null, got %v", state.WireguardSettings.MTU)
+		}
+		if got := state.WireguardSettings.MTU.Type(context.Background()); got != (types.ListType{ElemType: types.Int64Type}) {
+			t.Errorf("MTU must be a typed null list, got %v", got)
+		}
+		if len(state.WireguardSettings.Clients) != 0 {
+			t.Errorf("expected no clients, got %d", len(state.WireguardSettings.Clients))
+		}
+	})
+
+	t.Run("wireguard block nilled when plan omits it", func(t *testing.T) {
+		state := &InboundResourceModel{WireguardSettings: &InboundWireguardSettingsModel{}}
+		plan := &InboundResourceModel{}
+		alignBlocksWithPlan(state, plan)
+		if state.WireguardSettings != nil {
+			t.Fatal("expected the wireguard block removed")
+		}
+	})
+
+	t.Run("tuic block restored when plan declares it", func(t *testing.T) {
+		state := &InboundResourceModel{}
+		plan := &InboundResourceModel{TuicSettings: &InboundTuicSettingsModel{}}
+		alignBlocksWithPlan(state, plan)
+		if state.TuicSettings == nil {
+			t.Fatal("expected the tuic block restored")
+		}
+	})
+
+	t.Run("populated block left alone", func(t *testing.T) {
+		existing := &InboundWireguardSettingsModel{
+			Clients: []InboundWireguardClientModel{{Email: types.StringValue("a@t.com")}},
+		}
+		state := &InboundResourceModel{WireguardSettings: existing}
+		plan := &InboundResourceModel{WireguardSettings: &InboundWireguardSettingsModel{}}
+		alignBlocksWithPlan(state, plan)
+		if state.WireguardSettings != existing {
+			t.Fatal("a populated block must not be replaced")
+		}
+	})
+}
+
+// TestInboundResourceUpdateRemovesLastWireguardPeerKeepsBlock is the WireGuard
+// removal-to-zero case: after the last peer is deleted the panel's settings
+// lose the clients key entirely, so the flattened block is nil — the declared
+// wireguard_settings block must survive in state.
+func TestInboundResourceUpdateRemovesLastWireguardPeerKeepsBlock(t *testing.T) {
+	srv := newV390InboundServer(t, "wireguard", map[string]any{
+		"clients": []any{map[string]any{"email": "a@t.com", "publicKey": "pkA"}},
+	})
+	// Simulate the panel dropping the clients key once the last peer is gone.
+	srv.dropEmptyClientsKey = true
+
+	r := &InboundResource{client: newTestClient(t, srv.srv.URL)}
+	stateModel := wgModel("7", "before", wgPeerModel("a@t.com", "public_key", "pkA"))
+	planModel := &InboundResourceModel{
+		ID:       types.StringValue("7"),
+		Remark:   types.StringValue("after"),
+		Enable:   types.BoolValue(true),
+		Port:     types.Int64Value(25070),
+		Protocol: types.StringValue("wireguard"),
+		WireguardSettings: &InboundWireguardSettingsModel{
+			MTU:     types.ListNull(types.Int64Type),
+			Gateway: types.ListNull(types.StringType),
+			DNS:     types.ListNull(types.StringType),
+		},
+	}
+
+	plan := inboundResourceFixture(t, r, planModel)
+	state := tfsdk.State(inboundResourceFixture(t, r, stateModel))
+	resp := newInboundResourceUpdateResponse(t, r)
+	r.Update(context.Background(), resource.UpdateRequest{Plan: plan, State: state}, &resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected error on Update: %v", resp.Diagnostics)
+	}
+	if got := srv.delCalls.Load(); got != 1 {
+		t.Errorf("expected exactly 1 client del, got %d", got)
+	}
+
+	var got InboundResourceModel
+	resp.State.Get(context.Background(), &got)
+	if got.WireguardSettings == nil {
+		t.Fatal("expected the wireguard_settings block to survive removal-to-zero")
+	}
+	if len(got.WireguardSettings.Clients) != 0 {
+		t.Errorf("expected no peers in state, got %d", len(got.WireguardSettings.Clients))
+	}
+}
+
 func TestInboundResourceCreatePeerSafetyNet(t *testing.T) {
 	newCreateServer := func(t *testing.T, dropClients bool) (*httptest.Server, *atomic.Int32) {
 		t.Helper()
@@ -1179,6 +1362,100 @@ func TestInboundResourceModifyPlanMarksEditedTuicPeerVolatileAttrs(t *testing.T)
 	}
 	if v := get(1, "sub_id"); v.IsUnknown() {
 		t.Errorf("the untouched peer must keep its planned sub_id, got unknown")
+	}
+}
+
+// TestInboundResourceModifyPlanMarksNewPeerAttrsUnknown covers peers the apply
+// adds: a new list element has no prior state for UseStateForUnknown to copy,
+// so its unset Optional+Computed attributes plan as null — while the panel
+// materialises concrete values for them on every save. ModifyPlan must plan
+// them as unknown instead, on every protocol and every panel version.
+func TestInboundResourceModifyPlanMarksNewPeerAttrsUnknown(t *testing.T) {
+	r := &InboundResource{}
+	ctx := context.Background()
+	var schemaResp resource.SchemaResponse
+	r.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
+
+	mkPlan := func(m *InboundResourceModel) tfsdk.Plan {
+		p := tfsdk.Plan{Schema: schemaResp.Schema}
+		if diags := p.Set(ctx, m); diags.HasError() {
+			t.Fatalf("building plan fixture: %v", diags)
+		}
+		return p
+	}
+
+	stateModel := &InboundResourceModel{
+		ID:       types.StringValue("7"),
+		Remark:   types.StringValue("r"),
+		Enable:   types.BoolValue(true),
+		Port:     types.Int64Value(25070),
+		Protocol: types.StringValue("amneziawg"),
+		AmneziawgSettings: &InboundAmneziawgSettingsModel{
+			Clients: []InboundAmneziawgClientModel{awgPeerModel("a", "same", 1000)},
+		},
+	}
+	newPeer := InboundAmneziawgClientModel{
+		Email:      types.StringValue("b"),
+		PublicKey:  types.StringValue("pk-b"),
+		AllowedIPs: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("10.9.1.3/32")}),
+		Enable:     types.BoolValue(true),
+		// Everything else unset: plans as null without the fix.
+	}
+	planModel := &InboundResourceModel{
+		ID:       types.StringValue("7"),
+		Remark:   types.StringValue("r2"), // scalar change so ModifyPlan runs
+		Enable:   types.BoolValue(true),
+		Port:     types.Int64Value(25070),
+		Protocol: types.StringValue("amneziawg"),
+		AmneziawgSettings: &InboundAmneziawgSettingsModel{
+			Clients: []InboundAmneziawgClientModel{awgPeerModel("a", "same", 1000), newPeer},
+		},
+	}
+
+	plan := mkPlan(planModel)
+	state := tfsdk.State{Schema: schemaResp.Schema}
+	if diags := state.Set(ctx, stateModel); diags.HasError() {
+		t.Fatalf("building state fixture: %v", diags)
+	}
+
+	resp := &resource.ModifyPlanResponse{Plan: plan}
+	r.ModifyPlan(ctx, resource.ModifyPlanRequest{Plan: plan, State: state}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected error: %v", resp.Diagnostics)
+	}
+
+	get := func(idx int, attrName string) attr.Value {
+		var v attr.Value
+		diags := resp.Plan.GetAttribute(ctx,
+			path.Root("amneziawg_settings").AtName("clients").AtListIndex(idx).AtName(attrName), &v)
+		if diags.HasError() {
+			t.Fatalf("reading %s of peer %d: %v", attrName, idx, diags)
+		}
+		return v
+	}
+
+	// The new peer's unset computed attributes must plan as unknown...
+	for _, attrName := range []string{"comment", "sub_id", "limit_ip", "total_gb", "reset_day", "traffic_reset", "created_at", "updated_at", "private_key", "tg_id"} {
+		if v := get(1, attrName); !v.IsUnknown() {
+			t.Errorf("new peer %s: expected unknown, got %v", attrName, v)
+		}
+	}
+	// ...while its configured attributes keep their values...
+	if v := get(1, "public_key"); v.IsUnknown() || v.(types.String).ValueString() != "pk-b" {
+		t.Errorf("new peer public_key is configured; expected pk-b, got %v", v)
+	}
+	if v := get(1, "allowed_ips"); v.IsUnknown() {
+		t.Errorf("new peer allowed_ips is configured; must stay promised, got unknown")
+	}
+	if v := get(1, "enable"); v.IsUnknown() {
+		t.Errorf("new peer enable is configured; must stay promised, got unknown")
+	}
+	// ...and the existing peer is untouched.
+	if v := get(0, "comment"); v.IsUnknown() {
+		t.Errorf("existing peer comment must stay promised, got unknown")
+	}
+	if v := get(0, "updated_at"); v.IsUnknown() {
+		t.Errorf("existing peer updated_at must stay promised, got unknown")
 	}
 }
 

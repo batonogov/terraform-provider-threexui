@@ -1701,11 +1701,11 @@ func TestPanelSubscriptionV39ExpandFlatten(t *testing.T) {
 		SubIncyProfileDescription:  types.StringValue("desc"),
 		SubIncySortOrder:           types.StringValue("asc"),
 		SubIncySupportEmail:        types.StringValue("support@example.com"),
-		SubIncyAnnounceUrl:         types.StringValue("https://example.com/announce"),
-		SubIncyPremiumUrl:          types.StringValue("https://example.com/premium"),
+		SubIncyAnnounceUrl:         newURLSchemeNormalizedValue("https://example.com/announce"),
+		SubIncyPremiumUrl:          newURLSchemeNormalizedValue("https://example.com/premium"),
 		SubIncyBannerText:          types.StringValue("banner"),
 		SubIncyBannerButtonText:    types.StringValue("upgrade"),
-		SubIncyBannerButtonUrl:     types.StringValue("https://example.com/buy"),
+		SubIncyBannerButtonUrl:     newURLSchemeNormalizedValue("https://example.com/buy"),
 		SubIncyBannerBgColor:       types.StringValue("#fff"),
 		SubIncyBannerButtonColor:   types.StringValue("#000"),
 		SubIncyHideUrl:             types.StringValue("hide"),
@@ -1723,7 +1723,7 @@ func TestPanelSubscriptionV39ExpandFlatten(t *testing.T) {
 		SubIncyNoisesPacket:        types.StringValue("10-20"),
 		SubIncyNoisesDelay:         types.StringValue("1-5"),
 		SubIncyResolveEnable:       types.StringValue("true"),
-		SubIncyResolveDnsDomain:    types.StringValue("https://dns.example.com"),
+		SubIncyResolveDnsDomain:    newURLSchemeNormalizedValue("https://dns.example.com"),
 		SubIncyResolveDnsIp:        types.StringValue("1.1.1.1"),
 	}
 	out := expandPanelSubscription(m)

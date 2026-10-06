@@ -26,6 +26,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
@@ -638,10 +639,13 @@ func expandOwnedPeerAt(protocol string, m *InboundResourceModel, i int) map[stri
 
 // ownedPeerAttrIsEmpty reports whether the plan carries no usable value for
 // the given peer attribute. WireGuard/AmneziaWG flatten absent keys as null,
-// so the check is IsNull; TUIC's flatten normalises absent keys to concrete
-// zero values ("" or 0) because the panel serialises a TUIC client
+// so most checks are IsNull; TUIC's flatten normalises absent keys to
+// concrete zero values ("" or 0) because the panel serialises a TUIC client
 // differently on the create vs update read-back, so there the check is the
-// zero value itself.
+// zero value itself. The panel treats blank subId/trafficReset identically on
+// every protocol — a blank subId is regenerated and a blank trafficReset is
+// normalised to "never" — so those are empty whenever they carry no value,
+// "" included.
 func ownedPeerAttrIsEmpty(protocol string, m *InboundResourceModel, i int, attrName string) bool {
 	switch protocol {
 	case "amneziawg":
@@ -655,6 +659,12 @@ func ownedPeerAttrIsEmpty(protocol string, m *InboundResourceModel, i int, attrN
 			return c.AllowedIPs.IsNull()
 		case "created_at":
 			return c.CreatedAt.IsNull()
+		case "sub_id":
+			return c.SubID.IsNull() || c.SubID.ValueString() == ""
+		case "traffic_reset":
+			return c.TrafficReset.IsNull() || c.TrafficReset.ValueString() == ""
+		case "traffic_reset_day":
+			return c.TrafficResetDay.IsNull() || c.TrafficResetDay.ValueInt64() == 0
 		}
 	case "wireguard":
 		c := m.WireguardSettings.Clients[i]
@@ -665,6 +675,8 @@ func ownedPeerAttrIsEmpty(protocol string, m *InboundResourceModel, i int, attrN
 			return c.PublicKey.IsNull()
 		case "allowed_ips":
 			return c.AllowedIPs.IsNull()
+		case "sub_id":
+			return c.SubID.IsNull() || c.SubID.ValueString() == ""
 		}
 	case "tuic":
 		c := m.TuicSettings.Clients[i]
@@ -673,9 +685,64 @@ func ownedPeerAttrIsEmpty(protocol string, m *InboundResourceModel, i int, attrN
 			return c.SubID.IsNull() || c.SubID.IsUnknown() || c.SubID.ValueString() == ""
 		case "created_at":
 			return c.CreatedAt.IsNull() || c.CreatedAt.IsUnknown() || c.CreatedAt.ValueInt64() == 0
+		case "traffic_reset":
+			return c.TrafficReset.IsNull() || c.TrafficReset.IsUnknown() || c.TrafficReset.ValueString() == ""
+		case "traffic_reset_day":
+			return c.TrafficResetDay.IsNull() || c.TrafficResetDay.IsUnknown() || c.TrafficResetDay.ValueInt64() == 0
 		}
 	}
 	return false
+}
+
+// newOwnedPeerIndexes returns the plan indexes whose peer email has no match
+// in state — the peers this apply adds.
+func newOwnedPeerIndexes(protocol string, state, plan *InboundResourceModel) []int {
+	if !protocolReconcilesPeersViaClientAPI(protocol) || state == nil || plan == nil {
+		return nil
+	}
+	stateEmails := make(map[string]bool)
+	for i := 0; i < ownedPeerCount(protocol, state); i++ {
+		if email, _ := expandOwnedPeerAt(protocol, state, i)["email"].(string); email != "" {
+			stateEmails[email] = true
+		}
+	}
+	var out []int
+	for i := 0; i < ownedPeerCount(protocol, plan); i++ {
+		email, _ := expandOwnedPeerAt(protocol, plan, i)["email"].(string)
+		if email == "" || stateEmails[email] {
+			continue
+		}
+		out = append(out, i)
+	}
+	return out
+}
+
+// ownedPeerClientAttrTypes maps each peer-reconciling protocol to the
+// Optional+Computed attributes of its clients block (Required ones excluded),
+// collected from the block schemas themselves so a new attribute is picked up
+// automatically. ModifyPlan uses it to plan unset attributes of newly added
+// peers as unknown: UseStateForUnknown resolves a new list element's unset
+// attributes to null (there is no prior element to copy), while the panel
+// materialises concrete values for them on save — the zero fields of the
+// model.Client re-marshal, stamped timestamps, a generated subId, the
+// normalised "never"/1 traffic reset — and a known-null plan against a
+// concrete state fails the apply with an inconsistent result.
+var ownedPeerClientAttrTypes = map[string]map[string]attr.Type{}
+
+func init() {
+	collect := func(protocol string, block schema.ListNestedBlock) {
+		attrs := make(map[string]attr.Type, len(block.NestedObject.Attributes))
+		for name, a := range block.NestedObject.Attributes {
+			if a.IsRequired() {
+				continue
+			}
+			attrs[name] = a.GetType()
+		}
+		ownedPeerClientAttrTypes[protocol] = attrs
+	}
+	collect("wireguard", wireguardClientsBlock())
+	collect("amneziawg", amneziawgClientsBlock())
+	collect("tuic", tuicClientsBlock())
 }
 
 // materializedPeerAttrs lists the attributes the client endpoint writes back
@@ -686,19 +753,23 @@ func ownedPeerAttrIsEmpty(protocol string, m *InboundResourceModel, i int, attrN
 //   - WireGuard/AmneziaWG: privateKey/publicKey/allowedIPs are written back
 //     unconditionally (3x-ui-3.9.0 client_inbound_apply.go:834-836), gaining
 //     ""/[]; created_at is backfilled when missing (:822-824).
-//   - TUIC: the WG/AWG write-back block does not apply, but subId is
-//     regenerated whenever both the posted and the stored value are blank
-//     (:825-830), and created_at is backfilled the same way. TUIC's other
-//     optional fields are simply absent from the rewritten entry, which its
-//     zero-normalising flatten already round-trips.
+//   - Every protocol: the endpoint update goes through UpdateByEmail, which
+//     regenerates a blank subId and normalises a blank trafficReset to
+//     "never" and trafficResetDay 0 to 1 (client_crud.go:603,
+//     normalizeClientTrafficReset) before the typed client is marshalled into
+//     the settings entry (:723-727).
+//   - TUIC: the WG/AWG write-back block does not apply; the other optional
+//     fields are simply absent from the rewritten entry, which its
+//     zero-normalising flatten already round-trips. WireGuard models none of
+//     the timestamps or reset-cycle fields, so only sub_id applies there.
 func materializedPeerAttrs(protocol string) []string {
 	switch protocol {
 	case "amneziawg":
-		return []string{"private_key", "public_key", "allowed_ips", "created_at"}
+		return []string{"private_key", "public_key", "allowed_ips", "created_at", "sub_id", "traffic_reset", "traffic_reset_day"}
 	case "wireguard":
-		return []string{"private_key", "public_key", "allowed_ips"}
+		return []string{"private_key", "public_key", "allowed_ips", "sub_id"}
 	case "tuic":
-		return []string{"sub_id", "created_at"}
+		return []string{"sub_id", "created_at", "traffic_reset", "traffic_reset_day"}
 	}
 	return nil
 }
@@ -785,6 +856,11 @@ func (d inboundPeerDiff) empty() bool {
 // flags — never trigger one). Peers without an email are skipped on both
 // sides: the panel keys client rows on email, so no endpoint call could
 // address them.
+//
+// A blank plan subId carries no constraint: the client endpoints regenerate a
+// blank one on every save (a fresh random value, never ""), so comparing it
+// would make every WireGuard/AmneziaWG edit unconvergable — the re-read keeps
+// showing the generated value against the "" the plan carried forward.
 func diffInboundOwnedPeers(planClients, observedClients []any) inboundPeerDiff {
 	var diff inboundPeerDiff
 
@@ -822,7 +898,11 @@ func diffInboundOwnedPeers(planClients, observedClients []any) inboundPeerDiff {
 			diff.add = append(diff.add, m)
 			continue
 		}
-		if !isSubset(peerMapWithoutVolatile(normalizePeerMap(m)), peerMapWithoutVolatile(stored)) {
+		planMap := peerMapWithoutVolatile(normalizePeerMap(m))
+		if subID, _ := planMap["subId"].(string); subID == "" {
+			delete(planMap, "subId")
+		}
+		if !isSubset(planMap, peerMapWithoutVolatile(stored)) {
 			diff.update = append(diff.update, m)
 		}
 	}
@@ -834,6 +914,17 @@ func diffInboundOwnedPeers(planClients, observedClients []any) inboundPeerDiff {
 	}
 	return diff
 }
+
+// reconcileGraceReads is how many consecutive reads must show the peer
+// difference before the reconciliation pushes endpoint calls. On ≤ v3.8.5 the
+// wholesale update persists peers, but under SQLite contention a follow-up
+// GET can briefly serve the pre-update snapshot (#157); firing on the first
+// non-empty diff would then push a spurious add that the panel rejects with
+// "Duplicate email". Two reads grace lets the committed write become visible
+// first — a panel that reverts posted clients (v3.9.0's keepStoredClients)
+// shows the same difference on every read, so it still converges, one read
+// later.
+const reconcileGraceReads = 2
 
 // reconcileInboundOwnedPeers pushes the difference between the peers declared
 // in the plan (planSettings) and the peers the panel stores (observed)
@@ -850,7 +941,8 @@ func diffInboundOwnedPeers(planClients, observedClients []any) inboundPeerDiff {
 // that has them (see protocolReconcilesPeersViaClientAPI), so the
 // reconciliation runs unconditionally and needs no version gate: on ≤ v3.8.5
 // the inbound update already persisted the plan and the diff comes back
-// empty.
+// empty. See reconcileGraceReads for the one stale-read hazard of running it
+// there.
 //
 // The caller holds inboundClientMu (the create/update paths take it whenever
 // the protocol owns its peers), so these calls serialise with
@@ -870,43 +962,59 @@ func (r *InboundResource) reconcileInboundOwnedPeers(ctx context.Context, inboun
 		return observed, nil
 	}
 	planClients := settingsClientsList(planSettings)
-	diff := diffInboundOwnedPeers(planClients, settingsClientsList(observed.Settings))
-	if diff.empty() {
+	if diffInboundOwnedPeers(planClients, settingsClientsList(observed.Settings)).empty() {
 		return observed, nil
 	}
 
-	for _, email := range diff.remove {
-		if err := r.client.DeleteInboundClient(ctx, inboundID, email, email); err != nil {
-			return observed, fmt.Errorf("removing peer %q: %w", email, err)
-		}
-	}
-	for _, peer := range diff.add {
-		if err := r.client.AddInboundClient(ctx, inboundID, peer); err != nil {
-			return observed, fmt.Errorf("adding peer %q: %w", peer["email"], err)
-		}
-	}
-	for _, peer := range diff.update {
-		email, _ := peer["email"].(string)
-		if err := r.client.UpdateInboundClient(ctx, inboundID, email, email, peer); err != nil {
-			return observed, fmt.Errorf("updating peer %q: %w", email, err)
-		}
-	}
-
-	// Re-read until the reconciled set is visible: the endpoint writes commit
-	// before they answer, but under SQLite contention a follow-up GET can
-	// still serve the pre-write snapshot for a moment (same lag as #157).
 	settled := observed
-	if err := r.client.WithReadAfterWriteRetry(ctx, fmt.Sprintf("read inbound %d after peer reconciliation", inboundID), func() (bool, error) {
+	fired := false
+	reads := 0
+	if err := r.client.WithReadAfterWriteRetry(ctx, fmt.Sprintf("reconcile inbound %d peers", inboundID), func() (bool, error) {
 		got, getErr := r.client.GetInbound(ctx, inboundID)
 		if getErr != nil {
 			return false, getErr
 		}
 		settled = got
-		return diffInboundOwnedPeers(planClients, settingsClientsList(got.Settings)).empty(), nil
+		diff := diffInboundOwnedPeers(planClients, settingsClientsList(got.Settings))
+		if diff.empty() {
+			// The wholesale write became visible before the grace elapsed —
+			// nothing to push after all (the ≤ v3.8.5 path).
+			return true, nil
+		}
+		reads++
+		if !fired && reads >= reconcileGraceReads {
+			if err := r.applyInboundPeerDiff(ctx, inboundID, diff); err != nil {
+				return false, err
+			}
+			fired = true
+		}
+		return false, nil
 	}); err != nil {
 		return settled, fmt.Errorf("reconciled peers are not visible on the panel: %w", err)
 	}
 	return settled, nil
+}
+
+// applyInboundPeerDiff executes one add/update/remove round of peer
+// reconciliation through the shared client endpoints.
+func (r *InboundResource) applyInboundPeerDiff(ctx context.Context, inboundID int, diff inboundPeerDiff) error {
+	for _, email := range diff.remove {
+		if err := r.client.DeleteInboundClient(ctx, inboundID, email, email); err != nil {
+			return fmt.Errorf("removing peer %q: %w", email, err)
+		}
+	}
+	for _, peer := range diff.add {
+		if err := r.client.AddInboundClient(ctx, inboundID, peer); err != nil {
+			return fmt.Errorf("adding peer %q: %w", peer["email"], err)
+		}
+	}
+	for _, peer := range diff.update {
+		email, _ := peer["email"].(string)
+		if err := r.client.UpdateInboundClient(ctx, inboundID, email, email, peer); err != nil {
+			return fmt.Errorf("updating peer %q: %w", email, err)
+		}
+	}
+	return nil
 }
 
 func (r *InboundResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -1183,8 +1291,7 @@ func (r *InboundResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 		return
 	}
 	protocol := planModel.Protocol.ValueString()
-	marks := editedOwnedPeerMarks(protocol, &stateModel, &planModel)
-	if len(marks) == 0 {
+	if !protocolReconcilesPeersViaClientAPI(protocol) {
 		return
 	}
 	block := "amneziawg_settings"
@@ -1194,17 +1301,46 @@ func (r *InboundResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 	case "tuic":
 		block = "tuic_settings"
 	}
-	for idx, attrs := range marks {
+
+	// Peers edited through the client endpoints get panel-rewritten values
+	// back for attributes the plan merely carried forward from state; promise
+	// nothing for those, or the apply fails with an inconsistent result. See
+	// editedOwnedPeerMarks.
+	for idx, attrs := range editedOwnedPeerMarks(protocol, &stateModel, &planModel) {
 		for _, attrName := range attrs {
 			p := path.Root(block).AtName("clients").AtListIndex(idx).AtName(attrName)
 			var unknown attr.Value
 			switch attrName {
 			case "allowed_ips":
 				unknown = types.ListUnknown(types.StringType)
-			case "private_key", "public_key", "sub_id":
+			case "private_key", "public_key", "sub_id", "traffic_reset":
 				unknown = types.StringUnknown()
 			default:
 				unknown = types.Int64Unknown()
+			}
+			resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, p, unknown)...)
+		}
+	}
+
+	// Peers this apply adds: their unset Optional+Computed attributes plan as
+	// null (a new list element has no prior state for UseStateForUnknown to
+	// copy), but the panel materialises concrete values on save. Plan them as
+	// unknown instead. See ownedPeerClientAttrTypes.
+	for _, idx := range newOwnedPeerIndexes(protocol, &stateModel, &planModel) {
+		for name, typ := range ownedPeerClientAttrTypes[protocol] {
+			p := path.Root(block).AtName("clients").AtListIndex(idx).AtName(name)
+			var v attr.Value
+			resp.Diagnostics.Append(resp.Plan.GetAttribute(ctx, p, &v)...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			if !v.IsNull() {
+				continue
+			}
+			unknown, err := typ.ValueFromTerraform(ctx, tftypes.NewValue(typ.TerraformType(ctx), tftypes.UnknownValue))
+			if err != nil {
+				resp.Diagnostics.AddError("Failed to plan new peer attribute as unknown", err.Error())
+				return
 			}
 			resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, p, unknown)...)
 		}
@@ -1373,6 +1509,16 @@ func alignBlocksWithPlan(state *InboundResourceModel, plan *InboundResourceModel
 	}
 	if plan.WireguardSettings == nil {
 		state.WireguardSettings = nil
+	} else if state.WireguardSettings == nil {
+		// An empty wireguard_settings block round-trips through the panel as
+		// settings "{}", which flattens to nil. Keep the declared block
+		// present, or removing the last peer fails the apply with "was
+		// present, but now absent".
+		state.WireguardSettings = &InboundWireguardSettingsModel{
+			MTU:     types.ListNull(types.Int64Type),
+			Gateway: types.ListNull(types.StringType),
+			DNS:     types.ListNull(types.StringType),
+		}
 	}
 	if plan.AmneziawgSettings == nil {
 		state.AmneziawgSettings = nil
@@ -1384,6 +1530,9 @@ func alignBlocksWithPlan(state *InboundResourceModel, plan *InboundResourceModel
 	}
 	if plan.TuicSettings == nil {
 		state.TuicSettings = nil
+	} else if state.TuicSettings == nil {
+		// Same round-trip rule as wireguard_settings above.
+		state.TuicSettings = &InboundTuicSettingsModel{}
 	}
 	if plan.DokodemoSettings == nil {
 		state.DokodemoSettings = nil

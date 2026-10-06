@@ -671,85 +671,85 @@ func flattenPanelDiscord(in map[string]any) *PanelDiscordModel {
 }
 
 type PanelSubscriptionModel struct {
-	ID                     types.String `tfsdk:"id"`
-	SubEnable              types.Bool   `tfsdk:"sub_enable"`
-	SubJsonEnable          types.Bool   `tfsdk:"sub_json_enable"`
-	SubTitle               types.String `tfsdk:"sub_title"`
-	SubSupportURL          types.String `tfsdk:"sub_support_url"`
-	SubProfileURL          types.String `tfsdk:"sub_profile_url"`
-	SubAnnounce            types.String `tfsdk:"sub_announce"`
-	SubEnableRouting       types.Bool   `tfsdk:"sub_enable_routing"`
-	SubRoutingRules        types.String `tfsdk:"sub_routing_rules"`
-	SubListen              types.String `tfsdk:"sub_listen"`
-	SubPort                types.Int64  `tfsdk:"sub_port"`
-	SubPath                types.String `tfsdk:"sub_path"`
-	SubDomain              types.String `tfsdk:"sub_domain"`
-	SubCertFile            types.String `tfsdk:"sub_cert_file"`
-	SubKeyFile             types.String `tfsdk:"sub_key_file"`
-	SubUpdates             types.Int64  `tfsdk:"sub_updates"`
-	SubEncrypt             types.Bool   `tfsdk:"sub_encrypt"`
-	SubShowInfo            types.Bool   `tfsdk:"sub_show_info"`
-	SubEmailInRemark       types.Bool   `tfsdk:"sub_email_in_remark"`
-	SubURI                 types.String `tfsdk:"sub_uri"`
-	SubJsonPath            types.String `tfsdk:"sub_json_path"`
-	SubJsonURI             types.String `tfsdk:"sub_json_uri"`
-	SubJsonFragment        types.String `tfsdk:"sub_json_fragment"`
-	SubJsonNoises          types.String `tfsdk:"sub_json_noises"`
-	SubJsonMux             types.String `tfsdk:"sub_json_mux"`
-	SubJsonRules           types.String `tfsdk:"sub_json_rules"`
-	SubJsonObservatory     types.String `tfsdk:"sub_json_observatory"`
-	SubJsonAutoDetect      types.Bool   `tfsdk:"sub_json_auto_detect"`
-	SubJsonAlwaysArray     types.Bool   `tfsdk:"sub_json_always_array"`
-	SubJsonUserAgentRegex  types.String `tfsdk:"sub_json_user_agent_regex"`
-	SubClashEnable         types.Bool   `tfsdk:"sub_clash_enable"`
-	SubClashPath           types.String `tfsdk:"sub_clash_path"`
-	SubClashURI            types.String `tfsdk:"sub_clash_uri"`
-	SubClashEnableRouting  types.Bool   `tfsdk:"sub_clash_enable_routing"`
-	SubClashRules          types.String `tfsdk:"sub_clash_rules"`
-	SubClashAutoDetect     types.Bool   `tfsdk:"sub_clash_auto_detect"`
-	SubClashUserAgentRegex types.String `tfsdk:"sub_clash_user_agent_regex"`
-	SubJsonFinalMask       types.String `tfsdk:"sub_json_final_mask"`
-	SubThemeDir            types.String `tfsdk:"sub_theme_dir"`
-	RemarkTemplate         types.String `tfsdk:"remark_template"`
-	SubHideSettings        types.Bool   `tfsdk:"sub_hide_settings"`
-	SubIncyEnableRouting   types.Bool   `tfsdk:"sub_incy_enable_routing"`
-	SubIncyRoutingRules    types.String `tfsdk:"sub_incy_routing_rules"`
+	ID                     types.String             `tfsdk:"id"`
+	SubEnable              types.Bool               `tfsdk:"sub_enable"`
+	SubJsonEnable          types.Bool               `tfsdk:"sub_json_enable"`
+	SubTitle               types.String             `tfsdk:"sub_title"`
+	SubSupportURL          urlSchemeNormalizedValue `tfsdk:"sub_support_url"`
+	SubProfileURL          urlSchemeNormalizedValue `tfsdk:"sub_profile_url"`
+	SubAnnounce            types.String             `tfsdk:"sub_announce"`
+	SubEnableRouting       types.Bool               `tfsdk:"sub_enable_routing"`
+	SubRoutingRules        types.String             `tfsdk:"sub_routing_rules"`
+	SubListen              types.String             `tfsdk:"sub_listen"`
+	SubPort                types.Int64              `tfsdk:"sub_port"`
+	SubPath                types.String             `tfsdk:"sub_path"`
+	SubDomain              types.String             `tfsdk:"sub_domain"`
+	SubCertFile            types.String             `tfsdk:"sub_cert_file"`
+	SubKeyFile             types.String             `tfsdk:"sub_key_file"`
+	SubUpdates             types.Int64              `tfsdk:"sub_updates"`
+	SubEncrypt             types.Bool               `tfsdk:"sub_encrypt"`
+	SubShowInfo            types.Bool               `tfsdk:"sub_show_info"`
+	SubEmailInRemark       types.Bool               `tfsdk:"sub_email_in_remark"`
+	SubURI                 types.String             `tfsdk:"sub_uri"`
+	SubJsonPath            types.String             `tfsdk:"sub_json_path"`
+	SubJsonURI             types.String             `tfsdk:"sub_json_uri"`
+	SubJsonFragment        types.String             `tfsdk:"sub_json_fragment"`
+	SubJsonNoises          types.String             `tfsdk:"sub_json_noises"`
+	SubJsonMux             types.String             `tfsdk:"sub_json_mux"`
+	SubJsonRules           types.String             `tfsdk:"sub_json_rules"`
+	SubJsonObservatory     types.String             `tfsdk:"sub_json_observatory"`
+	SubJsonAutoDetect      types.Bool               `tfsdk:"sub_json_auto_detect"`
+	SubJsonAlwaysArray     types.Bool               `tfsdk:"sub_json_always_array"`
+	SubJsonUserAgentRegex  types.String             `tfsdk:"sub_json_user_agent_regex"`
+	SubClashEnable         types.Bool               `tfsdk:"sub_clash_enable"`
+	SubClashPath           types.String             `tfsdk:"sub_clash_path"`
+	SubClashURI            types.String             `tfsdk:"sub_clash_uri"`
+	SubClashEnableRouting  types.Bool               `tfsdk:"sub_clash_enable_routing"`
+	SubClashRules          types.String             `tfsdk:"sub_clash_rules"`
+	SubClashAutoDetect     types.Bool               `tfsdk:"sub_clash_auto_detect"`
+	SubClashUserAgentRegex types.String             `tfsdk:"sub_clash_user_agent_regex"`
+	SubJsonFinalMask       types.String             `tfsdk:"sub_json_final_mask"`
+	SubThemeDir            types.String             `tfsdk:"sub_theme_dir"`
+	RemarkTemplate         types.String             `tfsdk:"remark_template"`
+	SubHideSettings        types.Bool               `tfsdk:"sub_hide_settings"`
+	SubIncyEnableRouting   types.Bool               `tfsdk:"sub_incy_enable_routing"`
+	SubIncyRoutingRules    types.String             `tfsdk:"sub_incy_routing_rules"`
 
 	// v3.8.0 subscription additions (profile page mode, page state templates,
 	// JSON-subscription routing/DNS, Happ client customization). The subHapp*
 	// family and subProfileMode/subJsonRoutingRules/subJsonDns are frozen into
 	// the sub server at startup (initRouter) — see panelSettingsNeedRestart.
-	SubProfileMode             types.String `tfsdk:"sub_profile_mode"`
-	SubInfoNodeEnable          types.Bool   `tfsdk:"sub_info_node_enable"`
-	SubCalendarExpireInclusive types.Bool   `tfsdk:"sub_calendar_expire_inclusive"`
-	SubExpiredTemplate         types.String `tfsdk:"sub_expired_template"`
-	SubTrafficDepletedTemplate types.String `tfsdk:"sub_traffic_depleted_template"`
-	SubJsonRoutingRules        types.String `tfsdk:"sub_json_routing_rules"`
-	SubJsonDns                 types.String `tfsdk:"sub_json_dns"`
-	HappLinkEnable             types.Bool   `tfsdk:"happ_link_enable"`
-	SubHappAutoDetect          types.Bool   `tfsdk:"sub_happ_auto_detect"`
-	SubHappProviderId          types.String `tfsdk:"sub_happ_provider_id"`
-	SubHappNewUrl              types.String `tfsdk:"sub_happ_new_url"`
-	SubHappFallbackUrl         types.String `tfsdk:"sub_happ_fallback_url"`
-	SubHappSubInfoColor        types.String `tfsdk:"sub_happ_sub_info_color"`
-	SubHappSubInfoText         types.String `tfsdk:"sub_happ_sub_info_text"`
-	SubHappSubInfoButtonText   types.String `tfsdk:"sub_happ_sub_info_button_text"`
-	SubHappSubInfoButtonLink   types.String `tfsdk:"sub_happ_sub_info_button_link"`
-	SubHappSubExpire           types.Bool   `tfsdk:"sub_happ_sub_expire"`
-	SubHappSubExpireButtonLink types.String `tfsdk:"sub_happ_sub_expire_button_link"`
-	SubHappNotificationExpire  types.Bool   `tfsdk:"sub_happ_notification_expire"`
-	SubHappNoLimit             types.Bool   `tfsdk:"sub_happ_no_limit"`
-	SubHappAlwaysHwid          types.Bool   `tfsdk:"sub_happ_always_hwid"`
-	SubHappTunMode             types.String `tfsdk:"sub_happ_tun_mode"`
-	SubHappTunType             types.String `tfsdk:"sub_happ_tun_type"`
-	SubHappExcludeRoutes       types.String `tfsdk:"sub_happ_exclude_routes"`
-	SubHappExcludeApns         types.Bool   `tfsdk:"sub_happ_exclude_apns"`
-	SubHappColorProfile        types.String `tfsdk:"sub_happ_color_profile"`
-	SubHappPingType            types.String `tfsdk:"sub_happ_ping_type"`
-	SubHappAutoConnect         types.Bool   `tfsdk:"sub_happ_auto_connect"`
-	SubHappAutoConnectType     types.String `tfsdk:"sub_happ_auto_connect_type"`
-	SubHappPerAppMode          types.String `tfsdk:"sub_happ_per_app_mode"`
-	SubHappPerAppList          types.String `tfsdk:"sub_happ_per_app_list"`
+	SubProfileMode             types.String             `tfsdk:"sub_profile_mode"`
+	SubInfoNodeEnable          types.Bool               `tfsdk:"sub_info_node_enable"`
+	SubCalendarExpireInclusive types.Bool               `tfsdk:"sub_calendar_expire_inclusive"`
+	SubExpiredTemplate         types.String             `tfsdk:"sub_expired_template"`
+	SubTrafficDepletedTemplate types.String             `tfsdk:"sub_traffic_depleted_template"`
+	SubJsonRoutingRules        types.String             `tfsdk:"sub_json_routing_rules"`
+	SubJsonDns                 types.String             `tfsdk:"sub_json_dns"`
+	HappLinkEnable             types.Bool               `tfsdk:"happ_link_enable"`
+	SubHappAutoDetect          types.Bool               `tfsdk:"sub_happ_auto_detect"`
+	SubHappProviderId          types.String             `tfsdk:"sub_happ_provider_id"`
+	SubHappNewUrl              urlSchemeNormalizedValue `tfsdk:"sub_happ_new_url"`
+	SubHappFallbackUrl         urlSchemeNormalizedValue `tfsdk:"sub_happ_fallback_url"`
+	SubHappSubInfoColor        types.String             `tfsdk:"sub_happ_sub_info_color"`
+	SubHappSubInfoText         types.String             `tfsdk:"sub_happ_sub_info_text"`
+	SubHappSubInfoButtonText   types.String             `tfsdk:"sub_happ_sub_info_button_text"`
+	SubHappSubInfoButtonLink   urlSchemeNormalizedValue `tfsdk:"sub_happ_sub_info_button_link"`
+	SubHappSubExpire           types.Bool               `tfsdk:"sub_happ_sub_expire"`
+	SubHappSubExpireButtonLink urlSchemeNormalizedValue `tfsdk:"sub_happ_sub_expire_button_link"`
+	SubHappNotificationExpire  types.Bool               `tfsdk:"sub_happ_notification_expire"`
+	SubHappNoLimit             types.Bool               `tfsdk:"sub_happ_no_limit"`
+	SubHappAlwaysHwid          types.Bool               `tfsdk:"sub_happ_always_hwid"`
+	SubHappTunMode             types.String             `tfsdk:"sub_happ_tun_mode"`
+	SubHappTunType             types.String             `tfsdk:"sub_happ_tun_type"`
+	SubHappExcludeRoutes       types.String             `tfsdk:"sub_happ_exclude_routes"`
+	SubHappExcludeApns         types.Bool               `tfsdk:"sub_happ_exclude_apns"`
+	SubHappColorProfile        types.String             `tfsdk:"sub_happ_color_profile"`
+	SubHappPingType            types.String             `tfsdk:"sub_happ_ping_type"`
+	SubHappAutoConnect         types.Bool               `tfsdk:"sub_happ_auto_connect"`
+	SubHappAutoConnectType     types.String             `tfsdk:"sub_happ_auto_connect_type"`
+	SubHappPerAppMode          types.String             `tfsdk:"sub_happ_per_app_mode"`
+	SubHappPerAppList          types.String             `tfsdk:"sub_happ_per_app_list"`
 
 	// v3.9.0 subscription additions. externalSubUserAgent is read per request on
 	// every external-subscription fetch (internal/sub/external_subscription.go)
@@ -760,36 +760,36 @@ type PanelSubscriptionModel struct {
 	// The Incy strings carry a meaningful "": it omits the header so the
 	// subscriber's own app setting is left alone (entity.go comment), so empty
 	// must never be treated as unset.
-	SubHappLocalProxyAuth      types.String `tfsdk:"sub_happ_local_proxy_auth"`
-	ExternalSubUserAgent       types.String `tfsdk:"external_sub_user_agent"`
-	SubIncyAppAutoDetect       types.Bool   `tfsdk:"sub_incy_app_auto_detect"`
-	SubIncyProfileDescription  types.String `tfsdk:"sub_incy_profile_description"`
-	SubIncySortOrder           types.String `tfsdk:"sub_incy_sort_order"`
-	SubIncySupportEmail        types.String `tfsdk:"sub_incy_support_email"`
-	SubIncyAnnounceUrl         types.String `tfsdk:"sub_incy_announce_url"`
-	SubIncyPremiumUrl          types.String `tfsdk:"sub_incy_premium_url"`
-	SubIncyBannerText          types.String `tfsdk:"sub_incy_banner_text"`
-	SubIncyBannerButtonText    types.String `tfsdk:"sub_incy_banner_button_text"`
-	SubIncyBannerButtonUrl     types.String `tfsdk:"sub_incy_banner_button_url"`
-	SubIncyBannerBgColor       types.String `tfsdk:"sub_incy_banner_bg_color"`
-	SubIncyBannerButtonColor   types.String `tfsdk:"sub_incy_banner_button_color"`
-	SubIncyHideUrl             types.String `tfsdk:"sub_incy_hide_url"`
-	SubIncyHideCheck           types.String `tfsdk:"sub_incy_hide_check"`
-	SubIncyNoLimitEnabled      types.String `tfsdk:"sub_incy_no_limit_enabled"`
-	SubIncyPerAppEnable        types.String `tfsdk:"sub_incy_per_app_enable"`
-	SubIncyPerAppMode          types.String `tfsdk:"sub_incy_per_app_mode"`
-	SubIncyPerAppList          types.String `tfsdk:"sub_incy_per_app_list"`
-	SubIncyFragmentationEnable types.String `tfsdk:"sub_incy_fragmentation_enable"`
-	SubIncyFragmentLength      types.String `tfsdk:"sub_incy_fragment_length"`
-	SubIncyFragmentInterval    types.String `tfsdk:"sub_incy_fragment_interval"`
-	SubIncyFragmentPackets     types.String `tfsdk:"sub_incy_fragment_packets"`
-	SubIncyNoisesEnable        types.String `tfsdk:"sub_incy_noises_enable"`
-	SubIncyNoisesType          types.String `tfsdk:"sub_incy_noises_type"`
-	SubIncyNoisesPacket        types.String `tfsdk:"sub_incy_noises_packet"`
-	SubIncyNoisesDelay         types.String `tfsdk:"sub_incy_noises_delay"`
-	SubIncyResolveEnable       types.String `tfsdk:"sub_incy_resolve_enable"`
-	SubIncyResolveDnsDomain    types.String `tfsdk:"sub_incy_resolve_dns_domain"`
-	SubIncyResolveDnsIp        types.String `tfsdk:"sub_incy_resolve_dns_ip"`
+	SubHappLocalProxyAuth      types.String             `tfsdk:"sub_happ_local_proxy_auth"`
+	ExternalSubUserAgent       types.String             `tfsdk:"external_sub_user_agent"`
+	SubIncyAppAutoDetect       types.Bool               `tfsdk:"sub_incy_app_auto_detect"`
+	SubIncyProfileDescription  types.String             `tfsdk:"sub_incy_profile_description"`
+	SubIncySortOrder           types.String             `tfsdk:"sub_incy_sort_order"`
+	SubIncySupportEmail        types.String             `tfsdk:"sub_incy_support_email"`
+	SubIncyAnnounceUrl         urlSchemeNormalizedValue `tfsdk:"sub_incy_announce_url"`
+	SubIncyPremiumUrl          urlSchemeNormalizedValue `tfsdk:"sub_incy_premium_url"`
+	SubIncyBannerText          types.String             `tfsdk:"sub_incy_banner_text"`
+	SubIncyBannerButtonText    types.String             `tfsdk:"sub_incy_banner_button_text"`
+	SubIncyBannerButtonUrl     urlSchemeNormalizedValue `tfsdk:"sub_incy_banner_button_url"`
+	SubIncyBannerBgColor       types.String             `tfsdk:"sub_incy_banner_bg_color"`
+	SubIncyBannerButtonColor   types.String             `tfsdk:"sub_incy_banner_button_color"`
+	SubIncyHideUrl             types.String             `tfsdk:"sub_incy_hide_url"`
+	SubIncyHideCheck           types.String             `tfsdk:"sub_incy_hide_check"`
+	SubIncyNoLimitEnabled      types.String             `tfsdk:"sub_incy_no_limit_enabled"`
+	SubIncyPerAppEnable        types.String             `tfsdk:"sub_incy_per_app_enable"`
+	SubIncyPerAppMode          types.String             `tfsdk:"sub_incy_per_app_mode"`
+	SubIncyPerAppList          types.String             `tfsdk:"sub_incy_per_app_list"`
+	SubIncyFragmentationEnable types.String             `tfsdk:"sub_incy_fragmentation_enable"`
+	SubIncyFragmentLength      types.String             `tfsdk:"sub_incy_fragment_length"`
+	SubIncyFragmentInterval    types.String             `tfsdk:"sub_incy_fragment_interval"`
+	SubIncyFragmentPackets     types.String             `tfsdk:"sub_incy_fragment_packets"`
+	SubIncyNoisesEnable        types.String             `tfsdk:"sub_incy_noises_enable"`
+	SubIncyNoisesType          types.String             `tfsdk:"sub_incy_noises_type"`
+	SubIncyNoisesPacket        types.String             `tfsdk:"sub_incy_noises_packet"`
+	SubIncyNoisesDelay         types.String             `tfsdk:"sub_incy_noises_delay"`
+	SubIncyResolveEnable       types.String             `tfsdk:"sub_incy_resolve_enable"`
+	SubIncyResolveDnsDomain    urlSchemeNormalizedValue `tfsdk:"sub_incy_resolve_dns_domain"`
+	SubIncyResolveDnsIp        types.String             `tfsdk:"sub_incy_resolve_dns_ip"`
 }
 
 func panelSubscriptionSchema() schema.Schema {
@@ -821,17 +821,13 @@ func panelSubscriptionSchema() schema.Schema {
 			},
 			"sub_support_url": schema.StringAttribute{
 				Optional: true, Computed: true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-					ensureURLScheme(),
-				},
+				CustomType:    urlSchemeNormalizedType{},
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"sub_profile_url": schema.StringAttribute{
 				Optional: true, Computed: true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-					ensureURLScheme(),
-				},
+				CustomType:    urlSchemeNormalizedType{},
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"sub_announce": schema.StringAttribute{
 				Optional: true, Computed: true,
@@ -906,19 +902,15 @@ func panelSubscriptionSchema() schema.Schema {
 			},
 			"sub_happ_new_url": schema.StringAttribute{
 				Optional: true, Computed: true,
-				Description: "Happ: new-user URL. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty. " + subSchemeNormalizedNote,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-					ensureURLScheme(),
-				},
+				Description:   "Happ: new-user URL. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty. " + subSchemeNormalizedNote,
+				CustomType:    urlSchemeNormalizedType{},
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"sub_happ_fallback_url": schema.StringAttribute{
 				Optional: true, Computed: true,
-				Description: "Happ: fallback URL. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty. " + subSchemeNormalizedNote,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-					ensureURLScheme(),
-				},
+				Description:   "Happ: fallback URL. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty. " + subSchemeNormalizedNote,
+				CustomType:    urlSchemeNormalizedType{},
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"sub_happ_sub_info_color": schema.StringAttribute{
 				Optional: true, Computed: true,
@@ -937,11 +929,9 @@ func panelSubscriptionSchema() schema.Schema {
 			},
 			"sub_happ_sub_info_button_link": schema.StringAttribute{
 				Optional: true, Computed: true,
-				Description: "Happ: subscription info button link. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty. " + subSchemeNormalizedNote,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-					ensureURLScheme(),
-				},
+				Description:   "Happ: subscription info button link. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty. " + subSchemeNormalizedNote,
+				CustomType:    urlSchemeNormalizedType{},
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"sub_happ_sub_expire": schema.BoolAttribute{
 				Optional: true, Computed: true,
@@ -950,11 +940,9 @@ func panelSubscriptionSchema() schema.Schema {
 			},
 			"sub_happ_sub_expire_button_link": schema.StringAttribute{
 				Optional: true, Computed: true,
-				Description: "Happ: expiry button link. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty. " + subSchemeNormalizedNote,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-					ensureURLScheme(),
-				},
+				Description:   "Happ: expiry button link. Requires 3x-ui v3.8.0+; older panels ignore it and read it back empty. " + subSchemeNormalizedNote,
+				CustomType:    urlSchemeNormalizedType{},
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"sub_happ_notification_expire": schema.BoolAttribute{
 				Optional: true, Computed: true,
@@ -1055,19 +1043,15 @@ func panelSubscriptionSchema() schema.Schema {
 			},
 			"sub_incy_announce_url": schema.StringAttribute{
 				Optional: true, Computed: true,
-				Description: subIncyDescription("announcement URL") + " " + subSchemeNormalizedNote,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-					ensureURLScheme(),
-				},
+				Description:   subIncyDescription("announcement URL") + " " + subSchemeNormalizedNote,
+				CustomType:    urlSchemeNormalizedType{},
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"sub_incy_premium_url": schema.StringAttribute{
 				Optional: true, Computed: true,
-				Description: subIncyDescription("premium URL") + " " + subSchemeNormalizedNote,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-					ensureURLScheme(),
-				},
+				Description:   subIncyDescription("premium URL") + " " + subSchemeNormalizedNote,
+				CustomType:    urlSchemeNormalizedType{},
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"sub_incy_banner_text": schema.StringAttribute{
 				Optional: true, Computed: true,
@@ -1081,11 +1065,9 @@ func panelSubscriptionSchema() schema.Schema {
 			},
 			"sub_incy_banner_button_url": schema.StringAttribute{
 				Optional: true, Computed: true,
-				Description: subIncyDescription("banner button URL") + " " + subSchemeNormalizedNote,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-					ensureURLScheme(),
-				},
+				Description:   subIncyDescription("banner button URL") + " " + subSchemeNormalizedNote,
+				CustomType:    urlSchemeNormalizedType{},
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"sub_incy_banner_bg_color": schema.StringAttribute{
 				Optional: true, Computed: true,
@@ -1174,11 +1156,9 @@ func panelSubscriptionSchema() schema.Schema {
 			},
 			"sub_incy_resolve_dns_domain": schema.StringAttribute{
 				Optional: true, Computed: true,
-				Description: subIncyDescription("resolve DNS domain (treated as a URL upstream)") + " " + subSchemeNormalizedNote,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-					ensureURLScheme(),
-				},
+				Description:   subIncyDescription("resolve DNS domain (treated as a URL upstream)") + " " + subSchemeNormalizedNote,
+				CustomType:    urlSchemeNormalizedType{},
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"sub_incy_resolve_dns_ip": schema.StringAttribute{
 				Optional: true, Computed: true,
@@ -1692,10 +1672,10 @@ func flattenPanelSubscription(in map[string]any) *PanelSubscriptionModel {
 		m.SubTitle = types.StringValue(stringValue(v))
 	}
 	if v, ok := in["subSupportUrl"]; ok {
-		m.SubSupportURL = types.StringValue(stringValue(v))
+		m.SubSupportURL = newURLSchemeNormalizedValue(stringValue(v))
 	}
 	if v, ok := in["subProfileUrl"]; ok {
-		m.SubProfileURL = types.StringValue(stringValue(v))
+		m.SubProfileURL = newURLSchemeNormalizedValue(stringValue(v))
 	}
 	if v, ok := in["subAnnounce"]; ok {
 		m.SubAnnounce = types.StringValue(stringValue(v))
@@ -1743,10 +1723,10 @@ func flattenPanelSubscription(in map[string]any) *PanelSubscriptionModel {
 		m.SubHappProviderId = types.StringValue(stringValue(v))
 	}
 	if v, ok := in["subHappNewUrl"]; ok {
-		m.SubHappNewUrl = types.StringValue(stringValue(v))
+		m.SubHappNewUrl = newURLSchemeNormalizedValue(stringValue(v))
 	}
 	if v, ok := in["subHappFallbackUrl"]; ok {
-		m.SubHappFallbackUrl = types.StringValue(stringValue(v))
+		m.SubHappFallbackUrl = newURLSchemeNormalizedValue(stringValue(v))
 	}
 	if v, ok := in["subHappSubInfoColor"]; ok {
 		m.SubHappSubInfoColor = types.StringValue(stringValue(v))
@@ -1758,13 +1738,13 @@ func flattenPanelSubscription(in map[string]any) *PanelSubscriptionModel {
 		m.SubHappSubInfoButtonText = types.StringValue(stringValue(v))
 	}
 	if v, ok := in["subHappSubInfoButtonLink"]; ok {
-		m.SubHappSubInfoButtonLink = types.StringValue(stringValue(v))
+		m.SubHappSubInfoButtonLink = newURLSchemeNormalizedValue(stringValue(v))
 	}
 	if v, ok := in["subHappSubExpire"]; ok {
 		m.SubHappSubExpire = types.BoolValue(boolValue(v))
 	}
 	if v, ok := in["subHappSubExpireButtonLink"]; ok {
-		m.SubHappSubExpireButtonLink = types.StringValue(stringValue(v))
+		m.SubHappSubExpireButtonLink = newURLSchemeNormalizedValue(stringValue(v))
 	}
 	if v, ok := in["subHappNotificationExpire"]; ok {
 		m.SubHappNotificationExpire = types.BoolValue(boolValue(v))
@@ -1824,10 +1804,10 @@ func flattenPanelSubscription(in map[string]any) *PanelSubscriptionModel {
 		m.SubIncySupportEmail = types.StringValue(stringValue(v))
 	}
 	if v, ok := in["subIncyAnnounceUrl"]; ok {
-		m.SubIncyAnnounceUrl = types.StringValue(stringValue(v))
+		m.SubIncyAnnounceUrl = newURLSchemeNormalizedValue(stringValue(v))
 	}
 	if v, ok := in["subIncyPremiumUrl"]; ok {
-		m.SubIncyPremiumUrl = types.StringValue(stringValue(v))
+		m.SubIncyPremiumUrl = newURLSchemeNormalizedValue(stringValue(v))
 	}
 	if v, ok := in["subIncyBannerText"]; ok {
 		m.SubIncyBannerText = types.StringValue(stringValue(v))
@@ -1836,7 +1816,7 @@ func flattenPanelSubscription(in map[string]any) *PanelSubscriptionModel {
 		m.SubIncyBannerButtonText = types.StringValue(stringValue(v))
 	}
 	if v, ok := in["subIncyBannerButtonUrl"]; ok {
-		m.SubIncyBannerButtonUrl = types.StringValue(stringValue(v))
+		m.SubIncyBannerButtonUrl = newURLSchemeNormalizedValue(stringValue(v))
 	}
 	if v, ok := in["subIncyBannerBgColor"]; ok {
 		m.SubIncyBannerBgColor = types.StringValue(stringValue(v))
@@ -1890,7 +1870,7 @@ func flattenPanelSubscription(in map[string]any) *PanelSubscriptionModel {
 		m.SubIncyResolveEnable = types.StringValue(stringValue(v))
 	}
 	if v, ok := in["subIncyResolveDnsDomain"]; ok {
-		m.SubIncyResolveDnsDomain = types.StringValue(stringValue(v))
+		m.SubIncyResolveDnsDomain = newURLSchemeNormalizedValue(stringValue(v))
 	}
 	if v, ok := in["subIncyResolveDnsIp"]; ok {
 		m.SubIncyResolveDnsIp = types.StringValue(stringValue(v))

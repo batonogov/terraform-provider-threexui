@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 // TestAccPanelSubscription_RestartsPanel is the end-to-end regression guard for #291.
@@ -435,8 +437,11 @@ resource "threexui_panel_subscription" "test" {
 // external_sub_user_agent, sub_happ_local_proxy_auth and the Incy client
 // customization block — round-trip through the panel API. It also exercises
 // the common.EnsureURLScheme rewrite: sub_incy_announce_url is configured
-// scheme-less and must come back (and stay) as https://… without a diff on
-// the idempotency step.
+// scheme-less; the PANEL stores it as https://… (asserted via a direct
+// settings read), while Terraform state keeps the configured spelling —
+// urlSchemeNormalizedType's semantic equality makes the two equal, so the
+// framework retains the planned value and no diff appears on the refresh +
+// idempotency steps.
 func TestAccPanelSubscriptionV39(t *testing.T) {
 	requireMinVersion(t, "v3.9.0")
 	resource.Test(t, resource.TestCase{
@@ -488,9 +493,11 @@ resource "threexui_panel_subscription" "test" {
 					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "sub_happ_local_proxy_auth", "auto"),
 					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "sub_incy_app_auto_detect", "true"),
 					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "sub_incy_profile_description", "v39 profile"),
-					// Configured scheme-less: the panel stores it as https://… and
-					// the provider plans the same value, so state matches.
-					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "sub_incy_announce_url", "https://example.com/announce"),
+					// Configured scheme-less: state keeps the configured spelling
+					// (semantic equality retains the planned value)…
+					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "sub_incy_announce_url", "example.com/announce"),
+					// …while the panel stored the EnsureURLScheme-normalized form.
+					testAccCheckPanelSetting("subIncyAnnounceUrl", "https://example.com/announce"),
 					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "sub_incy_banner_text", "v39 banner"),
 					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "sub_incy_per_app_list", "com.a,com.b"),
 					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "sub_incy_fragment_length", "10-20"),
@@ -499,7 +506,10 @@ resource "threexui_panel_subscription" "test" {
 			},
 			// Update: rotate a quiet per-request field and two initRouter-frozen
 			// fields (both restart keys — the apply bounces the panel) and
-			// confirm the values stick.
+			// confirm the values stick. sub_incy_announce_url moves to a NEW
+			// scheme-less value: semantic equality must not mask a real update
+			// (state example.com/announce → example.com/announce2, panel side
+			// https://example.com/announce2).
 			{
 				Config: testAccProviderConfig() + `
 resource "threexui_panel_subscription" "test" {
@@ -512,18 +522,21 @@ resource "threexui_panel_subscription" "test" {
 
   sub_incy_app_auto_detect = false
   sub_incy_banner_text     = "v39 banner v2"
-  sub_incy_announce_url    = "https://example.com/announce2"
+  sub_incy_announce_url    = "example.com/announce2"
 }`,
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "external_sub_user_agent", "v2rayNG/1.9.1"),
 					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "sub_happ_local_proxy_auth", "off"),
 					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "sub_incy_app_auto_detect", "false"),
 					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "sub_incy_banner_text", "v39 banner v2"),
-					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "sub_incy_announce_url", "https://example.com/announce2"),
+					resource.TestCheckResourceAttr("threexui_panel_subscription.test", "sub_incy_announce_url", "example.com/announce2"),
+					testAccCheckPanelSetting("subIncyAnnounceUrl", "https://example.com/announce2"),
 				),
 			},
-			// Idempotency — in particular no residual diff from the
-			// EnsureURLScheme normalization in step 1.
+			// Idempotency — the config still spells the URL scheme-less while
+			// the state holds the https-prefixed form; the plan must be empty
+			// via semantic equality (no residual diff from the EnsureURLScheme
+			// normalization).
 			{
 				Config: testAccProviderConfig() + `
 resource "threexui_panel_subscription" "test" {
@@ -536,11 +549,33 @@ resource "threexui_panel_subscription" "test" {
 
   sub_incy_app_auto_detect = false
   sub_incy_banner_text     = "v39 banner v2"
-  sub_incy_announce_url    = "https://example.com/announce2"
+  sub_incy_announce_url    = "example.com/announce2"
 }`,
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: false,
 			},
 		},
 	})
+}
+
+// testAccCheckPanelSetting reads /setting/all directly and asserts the
+// panel-side value of a single key. Used where Terraform state legitimately
+// differs from the stored value — e.g. a CustomType attribute whose semantic
+// equality retains the configured spelling in state while the panel holds the
+// normalized form.
+func testAccCheckPanelSetting(key, want string) resource.TestCheckFunc {
+	return func(_ *terraform.State) error {
+		client, err := testAccClientFromEnv()
+		if err != nil {
+			return fmt.Errorf("client init: %w", err)
+		}
+		settings, err := client.GetSettings(context.Background())
+		if err != nil {
+			return fmt.Errorf("get settings: %w", err)
+		}
+		if got := stringValue(settings[key]); got != want {
+			return fmt.Errorf("panel setting %s = %q, want %q", key, got, want)
+		}
+		return nil
+	}
 }
