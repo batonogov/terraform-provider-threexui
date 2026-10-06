@@ -131,8 +131,48 @@ resource "threexui_host_group" "test" {
 	})
 }
 
-// --- Import by group_id ---
+// --- cipher_suites (v3.9.0+) ---
 
+func TestAccHostGroupCipherSuites_v390(t *testing.T) {
+	requireMinVersion(t, "v3.9.0")
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories(),
+		CheckDestroy:             testAccCheckHostGroupDestroyed,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccProviderConfig() + testAccHostGroupInboundConfig() + `
+resource "threexui_host_group" "test" {
+  remark        = "acc-host-group-ciphers"
+  hosts         = ["cipher.example.com"]
+  security      = "tls"
+  cipher_suites = "TLS_AES_128_GCM_SHA256:TLS_CHACHA20_POLY1305_SHA256"
+  inbound_ids   = [threexui_inbound.hg.id]
+}
+`,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("threexui_host_group.test", "cipher_suites", "TLS_AES_128_GCM_SHA256:TLS_CHACHA20_POLY1305_SHA256"),
+				),
+			},
+			{
+				Config: testAccProviderConfig() + testAccHostGroupInboundConfig() + `
+resource "threexui_host_group" "test" {
+  remark        = "acc-host-group-ciphers"
+  hosts         = ["cipher.example.com"]
+  security      = "tls"
+  cipher_suites = "TLS_AES_128_GCM_SHA256:TLS_CHACHA20_POLY1305_SHA256"
+  inbound_ids   = [threexui_inbound.hg.id]
+}
+`,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
+// --- Import by group_id ---
 func TestAccHostGroupImport(t *testing.T) {
 	requireMinVersion(t, "v3.5.0")
 

@@ -186,6 +186,93 @@ resource "threexui_inbound" "wg" {
 	})
 }
 
+// TestAccInboundWireguardClientsPeerLifecycle is the WireGuard counterpart of
+// TestAccInboundAmneziawgPeerLifecycle: peers in wireguard_settings.clients[]
+// must be addable, editable and removable — including removal-to-zero — on
+// every panel that has the multi-client model. Since 3x-ui v3.9.0 the inbound
+// update no longer persists the posted clients (keepStoredClients), so the
+// provider reconciles peers through the /panel/api/clients/* endpoints; on
+// older panels the wholesale update does it and the reconciliation is a
+// no-op, which is why this test is not version-gated beyond the feature's own
+// floor.
+func TestAccInboundWireguardClientsPeerLifecycle(t *testing.T) {
+	requireMinVersion(t, "v3.4.2") // wireguard_settings.clients[] was added in v3.4.2
+
+	const port = 26022
+	config := func(peers string) string {
+		return testAccProviderConfig() + fmt.Sprintf(`
+resource "threexui_inbound" "wg_peers" {
+  port     = %d
+  protocol = "wireguard"
+  remark   = "acc-wg-peers"
+  enable   = true
+  wireguard_settings {
+%s
+  }
+}
+`, port, peers)
+	}
+
+	peerA := func(comment string) string {
+		return fmt.Sprintf(`
+    clients {
+      email       = "wg-life-a@test.com"
+      public_key  = "dGVzdHB1YmxpY2tleXRlc3RwdWJsaWNrZXkxMjM0NQ=="
+      allowed_ips = ["10.0.0.10/32"]
+      comment     = %q
+    }`, comment)
+	}
+	peerB := `
+    clients {
+      email       = "wg-life-b@test.com"
+      public_key  = "cHB1YmxpY2tleXR3b3B1YmxpY2tleXR3b3B1YmxpY2tleQ=="
+      allowed_ips = ["10.0.0.11/32"]
+    }`
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories(),
+		CheckDestroy:             testAccCheckInboundDestroyed,
+		Steps: []resource.TestStep{
+			{
+				Config: config(peerA("one")),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("threexui_inbound.wg_peers", "wireguard_settings.clients.#", "1"),
+					resource.TestCheckResourceAttr("threexui_inbound.wg_peers", "wireguard_settings.clients.0.comment", "one"),
+				),
+			},
+			{
+				// Edit peer a AND add peer b in one apply.
+				Config: config(peerA("two") + peerB),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("threexui_inbound.wg_peers", "wireguard_settings.clients.#", "2"),
+					resource.TestCheckResourceAttr("threexui_inbound.wg_peers", "wireguard_settings.clients.0.comment", "two"),
+					resource.TestCheckResourceAttr("threexui_inbound.wg_peers", "wireguard_settings.clients.1.email", "wg-life-b@test.com"),
+				),
+			},
+			{
+				// Partial removal: peer b goes, peer a stays.
+				Config: config(peerA("two")),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("threexui_inbound.wg_peers", "wireguard_settings.clients.#", "1"),
+					resource.TestCheckResourceAttr("threexui_inbound.wg_peers", "wireguard_settings.clients.0.email", "wg-life-a@test.com"),
+				),
+			},
+			{
+				// Removal-to-zero.
+				Config: config(""),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("threexui_inbound.wg_peers", "wireguard_settings.clients.#", "0"),
+				),
+			},
+			{
+				Config:   config(""),
+				PlanOnly: true,
+			},
+		},
+	})
+}
+
 // --- Dokodemo-door (tunnel) ---
 
 func TestAccInboundDokodemo(t *testing.T) {
@@ -640,8 +727,64 @@ func TestAccInboundUpdateFields(t *testing.T) {
 					resource.TestCheckResourceAttr("threexui_inbound.update", "enable", "false"),
 				),
 			},
+			{
+				// Flipping enable back to true exercises the setEnable
+				// reconciliation path: on 3x-ui v3.9.0 UpdateInbound
+				// silently restores the stored enable value, so the
+				// provider must push the flag through
+				// /panel/api/inbounds/setEnable/:id. On older panels the
+				// update persists the flag directly and the reconcile is a
+				// no-op — the test is version-agnostic either way.
+				Config: testAccProviderConfig() + testAccInboundUpdateConfig("acc-update-2", 25013, true),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("threexui_inbound.update", "remark", "acc-update-2"),
+					resource.TestCheckResourceAttr("threexui_inbound.update", "port", "25013"),
+					resource.TestCheckResourceAttr("threexui_inbound.update", "enable", "true"),
+				),
+			},
 		},
 	})
+}
+
+// --- exclude_from_sub (3x-ui v3.9.0+) ---
+
+func TestAccInboundExcludeFromSub(t *testing.T) {
+	requireMinVersion(t, "v3.9.0")
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories(),
+		CheckDestroy:             testAccCheckInboundDestroyed,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccProviderConfig() + testAccInboundExcludeFromSubConfig(true),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("threexui_inbound.excluded", "exclude_from_sub", "true"),
+					resource.TestCheckResourceAttr("threexui_inbound.excluded", "enable", "true"),
+				),
+			},
+			{
+				Config: testAccProviderConfig() + testAccInboundExcludeFromSubConfig(false),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("threexui_inbound.excluded", "exclude_from_sub", "false"),
+				),
+			},
+		},
+	})
+}
+
+func testAccInboundExcludeFromSubConfig(excludeFromSub bool) string {
+	return fmt.Sprintf(`
+resource "threexui_inbound" "excluded" {
+  port             = 25034
+  protocol         = "vless"
+  remark           = "acc-exclude-from-sub"
+  enable           = true
+  exclude_from_sub = %t
+  vless_settings {
+    decryption = "none"
+  }
+}
+`, excludeFromSub)
 }
 
 // --- Idempotency: no changes on re-apply ---

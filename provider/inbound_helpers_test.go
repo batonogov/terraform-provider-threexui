@@ -1,8 +1,12 @@
 package provider
 
 import (
+	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"regexp"
+	"sync/atomic"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -403,5 +407,118 @@ func TestInboundDisableFlowExpandFlatten(t *testing.T) {
 	}
 	if old.DisableFlow.ValueBool() {
 		t.Fatalf("pre-v3.7.0 panel must read back false, got %v", old.DisableFlow.ValueBool())
+	}
+}
+
+// TestInboundExcludeFromSubExpandFlatten covers the v3.9.0 `excludeFromSub`
+// field, which keeps an inbound operational while omitting it from
+// subscription output. A pre-v3.9.0 panel omits the key entirely, which must
+// read back as false rather than as an error.
+func TestInboundExcludeFromSubExpandFlatten(t *testing.T) {
+	inb := expandInboundFromModel(&InboundResourceModel{
+		ExcludeFromSub: types.BoolValue(true),
+	})
+	if !inb.ExcludeFromSub {
+		t.Fatalf("ExcludeFromSub: %v", inb.ExcludeFromSub)
+	}
+
+	m, diags := inboundToModel(&Inbound{ExcludeFromSub: true}, false)
+	if diags.HasError() {
+		t.Fatalf("unexpected error diagnostics: %v", diags)
+	}
+	if !m.ExcludeFromSub.ValueBool() {
+		t.Fatalf("ExcludeFromSub: %v", m.ExcludeFromSub.ValueBool())
+	}
+
+	// Unconfigured attribute (null) must not force a value onto the payload.
+	if inb := expandInboundFromModel(&InboundResourceModel{ExcludeFromSub: types.BoolNull()}); inb.ExcludeFromSub {
+		t.Fatalf("null ExcludeFromSub must expand to false, got %v", inb.ExcludeFromSub)
+	}
+	old, diags := inboundToModel(&Inbound{}, false)
+	if diags.HasError() {
+		t.Fatalf("unexpected error diagnostics: %v", diags)
+	}
+	if old.ExcludeFromSub.ValueBool() {
+		t.Fatalf("pre-v3.9.0 panel must read back false, got %v", old.ExcludeFromSub.ValueBool())
+	}
+}
+
+// TestInboundToFormExcludeFromSub pins the form key the panel binds
+// (form:"excludeFromSub" on model.Inbound, form-bindable on add and update).
+func TestInboundToFormExcludeFromSub(t *testing.T) {
+	form := inboundToForm(&Inbound{ExcludeFromSub: true})
+	if got := form.Get("excludeFromSub"); got != "true" {
+		t.Fatalf("excludeFromSub form value: %q", got)
+	}
+	form = inboundToForm(&Inbound{})
+	if got := form.Get("excludeFromSub"); got != "false" {
+		t.Fatalf("excludeFromSub form value: %q", got)
+	}
+}
+
+func TestEnsureInboundEnableNoopWhenMatching(t *testing.T) {
+	var calls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&calls, 1)
+		w.Write(okResponse(nil))
+	}))
+	defer srv.Close()
+
+	r := &InboundResource{client: newTestClient(t, srv.URL)}
+	pushed := false
+	if err := r.ensureInboundEnable(context.Background(), 7, true, true, &pushed); err != nil {
+		t.Fatalf("ensureInboundEnable: %v", err)
+	}
+	if pushed {
+		t.Fatalf("pushed must stay false when observed already matches")
+	}
+	if got := atomic.LoadInt32(&calls); got != 0 {
+		t.Fatalf("expected no HTTP call when observed matches, got %d", got)
+	}
+}
+
+func TestEnsureInboundEnablePushesOnce(t *testing.T) {
+	var calls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/panel/api/inbounds/setEnable/7" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		atomic.AddInt32(&calls, 1)
+		w.Write(okResponse(nil))
+	}))
+	defer srv.Close()
+
+	r := &InboundResource{client: newTestClient(t, srv.URL)}
+	pushed := false
+	if err := r.ensureInboundEnable(context.Background(), 7, false, true, &pushed); err != nil {
+		t.Fatalf("ensureInboundEnable: %v", err)
+	}
+	if !pushed {
+		t.Fatalf("pushed must be set after the reconcile call")
+	}
+	// A second poll that still observes the pre-flip value must not re-issue
+	// the call — the flip is committed and only its visibility is pending.
+	if err := r.ensureInboundEnable(context.Background(), 7, false, true, &pushed); err != nil {
+		t.Fatalf("ensureInboundEnable (second poll): %v", err)
+	}
+	if got := atomic.LoadInt32(&calls); got != 1 {
+		t.Fatalf("expected exactly 1 setEnable call across polls, got %d", got)
+	}
+}
+
+func TestEnsureInboundEnableSurfacesError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write(failResponse("port conflict"))
+	}))
+	defer srv.Close()
+
+	r := &InboundResource{client: newTestClient(t, srv.URL)}
+	pushed := false
+	if err := r.ensureInboundEnable(context.Background(), 7, true, false, &pushed); err == nil {
+		t.Fatalf("expected the setEnable failure to surface")
+	}
+	if pushed {
+		t.Fatalf("pushed must stay false when the call fails")
 	}
 }

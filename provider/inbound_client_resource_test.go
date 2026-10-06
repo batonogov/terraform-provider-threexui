@@ -250,9 +250,10 @@ func TestInboundClientMtprotoExpandFlatten(t *testing.T) {
 	})
 }
 
-// TestInboundClientRenewalFieldsExpandFlatten covers the four v3.7.0 client
-// fields: calendar-day renewals (resetDay/resetMax) and the per-client traffic
-// reset cycle (trafficReset/trafficResetDay). A pre-v3.7.0 panel omits all four
+// TestInboundClientRenewalFieldsExpandFlatten covers the v3.7.0+ client
+// fields: calendar-day renewals (resetDay/resetMax), the v3.9.0 weekly
+// renewal (resetWeekday) and the per-client traffic reset cycle
+// (trafficReset/trafficResetDay). A pre-v3.7.0 panel omits all of them
 // from settings.clients[], which must read back as the zero value rather than
 // producing a spurious diff.
 func TestInboundClientRenewalFieldsExpandFlatten(t *testing.T) {
@@ -300,6 +301,9 @@ func TestInboundClientRenewalFieldsExpandFlatten(t *testing.T) {
 		if old.ResetMax.ValueInt64() != 0 {
 			t.Errorf("ResetMax: %d", old.ResetMax.ValueInt64())
 		}
+		if old.ResetWeekday.ValueInt64() != 0 {
+			t.Errorf("ResetWeekday: %d", old.ResetWeekday.ValueInt64())
+		}
 		if !old.TrafficReset.IsNull() {
 			t.Errorf("TrafficReset should be null, got %q", old.TrafficReset.ValueString())
 		}
@@ -314,10 +318,39 @@ func TestInboundClientRenewalFieldsExpandFlatten(t *testing.T) {
 			ClientID:  types.StringValue("uuid"),
 			Email:     types.StringValue("user@test.com"),
 		})
-		for _, key := range []string{"resetDay", "resetMax", "trafficReset", "trafficResetDay"} {
+		for _, key := range []string{"resetDay", "resetMax", "resetWeekday", "trafficReset", "trafficResetDay"} {
 			if _, ok := expanded[key]; ok {
 				t.Errorf("%s must be omitted when unconfigured, got %v", key, expanded[key])
 			}
 		}
 	})
+}
+
+// TestInboundClientResetWeekdayExpandFlatten covers the v3.9.0 weekly calendar
+// renewal field on its own, since it cannot share a model with resetDay
+// (the panel rejects resetWeekday combined with reset/resetDay).
+func TestInboundClientResetWeekdayExpandFlatten(t *testing.T) {
+	model := &InboundClientResourceModel{
+		InboundID:    types.Int64Value(1),
+		ClientID:     types.StringValue("uuid"),
+		Email:        types.StringValue("user@test.com"),
+		ResetWeekday: types.Int64Value(3),
+		ResetMax:     types.Int64Value(5),
+	}
+
+	expanded := expandInboundClientFromModel(model)
+	if expanded["resetWeekday"] != 3 {
+		t.Errorf("resetWeekday: got %v, want 3", expanded["resetWeekday"])
+	}
+	if _, ok := expanded["resetDay"]; ok {
+		t.Errorf("resetDay must be omitted when unconfigured, got %v", expanded["resetDay"])
+	}
+
+	flattened := inboundClientToModel(1, "uuid", expanded)
+	if flattened.ResetWeekday.ValueInt64() != 3 {
+		t.Errorf("ResetWeekday: %d", flattened.ResetWeekday.ValueInt64())
+	}
+	if flattened.ResetMax.ValueInt64() != 5 {
+		t.Errorf("ResetMax: %d", flattened.ResetMax.ValueInt64())
+	}
 }

@@ -313,6 +313,7 @@ func TestInboundToForm(t *testing.T) {
 		"nodeId":               []string{"42"},
 		"disableFlow":          []string{"false"},
 		"trafficResetDay":      []string{"0"},
+		"excludeFromSub":       []string{"false"},
 	}
 	if form.Encode() != want.Encode() {
 		t.Fatalf("unexpected form: %s", form.Encode())

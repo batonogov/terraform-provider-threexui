@@ -49,6 +49,7 @@ terraform import threexui_host_group.premium_eu 1234567890123456
 - `path` (Optional, String) - Path override for the generated share links.
 - `alpn` (Optional, List of String) - ALPN protocol list (e.g. `["h2", "http/1.1"]`).
 - `fingerprint` (Optional, String) - TLS fingerprint (uTLS).
+- `cipher_suites` (Optional, String) - TLS cipher suites for the generated share links. Added in 3x-ui v3.9.0; empty means the panel default.
 - `override_sni_from_address` (Optional, Boolean) - Derive the SNI from the host address.
 - `keep_sni_blank` (Optional, Boolean) - Keep the SNI blank in share links.
 - `pinned_peer_cert_sha256` (Optional, List of String) - Pinned peer certificate SHA-256 hashes.

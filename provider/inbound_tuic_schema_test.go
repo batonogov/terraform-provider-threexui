@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -113,4 +114,86 @@ func TestTuicProtocolOwnsClients(t *testing.T) {
 	if !protocolOwnsClients("tuic") {
 		t.Fatal("tuic peers belong to threexui_inbound, not threexui_inbound_client")
 	}
+}
+
+// TestTuicServerValidators mirrors the panel's normalizeTuicSettings
+// (3x-ui v3.9.0 web/service/tuic_settings.go) at plan time: unknown enums are
+// a hard save error upstream, and max_udp_relay_packet_size 65246-65507 is
+// silently clamped to 65245 (non-round-trippable), so both must fail
+// validation before apply.
+func TestTuicServerValidators(t *testing.T) {
+	block := tuicSettingsBlock()
+	server, ok := block.Blocks["server"].(schema.SingleNestedBlock)
+	if !ok {
+		t.Fatalf("server block has unexpected type %T", block.Blocks["server"])
+	}
+
+	t.Run("congestion_control", func(t *testing.T) {
+		attr, ok := server.Attributes["congestion_control"].(schema.StringAttribute)
+		if !ok {
+			t.Fatalf("congestion_control has unexpected type %T", server.Attributes["congestion_control"])
+		}
+		for _, valid := range []string{"bbr", "cubic", "new_reno"} {
+			for _, v := range attr.Validators {
+				if testStringValidator(t, v, valid) {
+					t.Errorf("congestion_control should accept %q", valid)
+				}
+			}
+		}
+		// "reno" is an upstream alias the panel rewrites to "new_reno" on
+		// save, so it cannot round-trip and must be rejected here.
+		for _, invalid := range []string{"reno", "BBR", "vegas", ""} {
+			for _, v := range attr.Validators {
+				if !testStringValidator(t, v, invalid) {
+					t.Errorf("congestion_control should reject %q", invalid)
+				}
+			}
+		}
+	})
+
+	t.Run("log_level", func(t *testing.T) {
+		attr, ok := server.Attributes["log_level"].(schema.StringAttribute)
+		if !ok {
+			t.Fatalf("log_level has unexpected type %T", server.Attributes["log_level"])
+		}
+		for _, valid := range []string{"debug", "info", "warn", "error"} {
+			for _, v := range attr.Validators {
+				if testStringValidator(t, v, valid) {
+					t.Errorf("log_level should accept %q", valid)
+				}
+			}
+		}
+		// The panel case-folds and maps "warning" to "warn" on save; only the
+		// canonical set round-trips.
+		for _, invalid := range []string{"warning", "INFO", "trace", ""} {
+			for _, v := range attr.Validators {
+				if !testStringValidator(t, v, invalid) {
+					t.Errorf("log_level should reject %q", invalid)
+				}
+			}
+		}
+	})
+
+	t.Run("max_udp_relay_packet_size", func(t *testing.T) {
+		attr, ok := server.Attributes["max_udp_relay_packet_size"].(schema.Int64Attribute)
+		if !ok {
+			t.Fatalf("max_udp_relay_packet_size has unexpected type %T", server.Attributes["max_udp_relay_packet_size"])
+		}
+		for _, valid := range []int64{1, 1500, 65245} {
+			for _, v := range attr.Validators {
+				if testInt64Validator(t, v, valid) {
+					t.Errorf("max_udp_relay_packet_size should accept %d", valid)
+				}
+			}
+		}
+		// 65246-65507 is the panel's silent-clamp range; 65508+ is a hard
+		// save error; 0 and negatives never meant anything.
+		for _, invalid := range []int64{0, -1, 65246, 65507, 65508, 100000} {
+			for _, v := range attr.Validators {
+				if !testInt64Validator(t, v, invalid) {
+					t.Errorf("max_udp_relay_packet_size should reject %d", invalid)
+				}
+			}
+		}
+	})
 }

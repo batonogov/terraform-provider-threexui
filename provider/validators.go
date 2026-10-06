@@ -10,7 +10,9 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
 // ---------------------------------------------------------------------------
@@ -248,4 +250,55 @@ func (addrOrPrefixListValidator) ValidateString(_ context.Context, req validator
 // addrOrPrefixListValidators validates a comma-separated IP/CIDR list.
 func addrOrPrefixListValidators() []validator.String {
 	return []validator.String{addrOrPrefixListValidator{}}
+}
+
+// ---------------------------------------------------------------------------
+// Client renewal validators
+// ---------------------------------------------------------------------------
+
+// resetWeekdayExclusiveValidator enforces the upstream weekly-renewal rule
+// (validateClientRenewal, internal/web/service/client_crud.go): a positive
+// reset_weekday cannot be combined with a positive reset or reset_day. The
+// framework's int64validator.ConflictsWith is value-blind — it would also
+// reject reset_weekday = 0 alongside reset = 30, a combination the panel
+// accepts because 0 disables weekly renewal — so the check is expressed here
+// against the configured values instead.
+type resetWeekdayExclusiveValidator struct{}
+
+func (resetWeekdayExclusiveValidator) Description(_ context.Context) string {
+	return "must be 0 (disabled) when reset or reset_day is greater than 0"
+}
+
+func (resetWeekdayExclusiveValidator) MarkdownDescription(ctx context.Context) string {
+	return resetWeekdayExclusiveValidator{}.Description(ctx)
+}
+
+func (resetWeekdayExclusiveValidator) ValidateInt64(ctx context.Context, req validator.Int64Request, resp *validator.Int64Response) {
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() || req.ConfigValue.ValueInt64() == 0 {
+		return
+	}
+	for _, other := range []struct {
+		name string
+		attr path.Path
+	}{
+		{"reset", path.Root("reset")},
+		{"reset_day", path.Root("reset_day")},
+	} {
+		var value types.Int64
+		resp.Diagnostics.Append(req.Config.GetAttribute(ctx, other.attr, &value)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if value.IsNull() || value.IsUnknown() || value.ValueInt64() == 0 {
+			continue
+		}
+		resp.Diagnostics.AddAttributeError(
+			req.Path,
+			"Conflicting renewal settings",
+			"Weekly renewal (reset_weekday) cannot be combined with "+other.name+
+				": the panel rejects the combination (validateClientRenewal). "+
+				"Set "+other.name+" to 0 or remove reset_weekday.",
+		)
+		return
+	}
 }

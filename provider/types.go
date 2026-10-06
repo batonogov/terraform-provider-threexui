@@ -41,6 +41,10 @@ type Inbound struct {
 	Sniffing          string `json:"sniffing"`
 	NodeID            *int   `json:"nodeId,omitempty"`
 	DisableFlow       bool   `json:"disableFlow"`
+	// ExcludeFromSub (v3.9.0+) keeps the inbound operational while omitting it
+	// from subscription output. Older panels never send the key, so it decodes
+	// to false there.
+	ExcludeFromSub bool `json:"excludeFromSub"`
 }
 
 func (i *Inbound) UnmarshalJSON(data []byte) error {

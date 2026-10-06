@@ -9,8 +9,9 @@
     {"version": "v3.6.0", "supported": true},
     {"version": "v3.7.0", "supported": true},
     {"version": "v3.8.0", "supported": true},
-    {"version": "v3.8.5", "supported": true}
+    {"version": "v3.8.5", "supported": true},
+    {"version": "v3.9.0", "supported": true}
   ],
-  "default_version": "v3.8.5",
-  "minor_lines": ["3.3.x", "3.4.x", "3.5.x", "3.6.x", "3.7.x", "3.8.x"]
+  "default_version": "v3.9.0",
+  "minor_lines": ["3.3.x", "3.4.x", "3.5.x", "3.6.x", "3.7.x", "3.8.x", "3.9.x"]
 }

@@ -167,6 +167,7 @@ check_readme() {
 # ---------------------------------------------------------------------------
 get_version_guide_note() {
   case "$1" in
+    v3.9.0) echo 'Incy client customization (`subIncy*`), external-subscription User-Agent, inbound `exclude_from_sub`, weekly client renewals (`reset_weekday`); inbound updates merge instead of reverting concurrent client/enable changes; xray-core v26.9.30 with WireGuard domain-strategy and xdns finalmask migrations.' ;;
     v3.8.5) echo 'Rebuilt subscription page; Xray survives a bad config (port-collision saves and enables are refused); large-fleet node sync; empty REALITY `min_client_ver` now means no minimum (xray-core v26.9.9).' ;;
     v3.8.0) echo 'TUIC v5 inbounds, AmneziaWG outbounds, a Discord notification bot (10 `discord*` settings), Happ client customization (`subHapp*`), `sub_profile_mode`, xray-core v26.9.9 with one-time template migrations, and hardened installs.' ;;
     v3.7.0) echo 'Native AmneziaWG inbounds, calendar-day client renewals with a per-client traffic reset cycle, inbound `disable_flow`, an IP-limit allowlist, and scoped API tokens.' ;;

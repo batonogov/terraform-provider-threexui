@@ -42,6 +42,7 @@ type HostGroup struct {
 	Path                   string   `json:"path"`
 	Alpn                   []string `json:"alpn"`
 	Fingerprint            string   `json:"fingerprint"`
+	CipherSuites           string   `json:"cipherSuites"`
 	OverrideSniFromAddress bool     `json:"overrideSniFromAddress"`
 	KeepSniBlank           bool     `json:"keepSniBlank"`
 	PinnedPeerCertSha256   []string `json:"pinnedPeerCertSha256"`
@@ -85,6 +86,7 @@ type HostGroupResourceModel struct {
 	Path                   types.String `tfsdk:"path"`
 	Alpn                   types.List   `tfsdk:"alpn"` // list of string
 	Fingerprint            types.String `tfsdk:"fingerprint"`
+	CipherSuites           types.String `tfsdk:"cipher_suites"`
 	OverrideSniFromAddress types.Bool   `tfsdk:"override_sni_from_address"`
 	KeepSniBlank           types.Bool   `tfsdk:"keep_sni_blank"`
 	PinnedPeerCertSha256   types.List   `tfsdk:"pinned_peer_cert_sha256"` // list of string
@@ -295,6 +297,7 @@ func hostGroupFromModel(ctx context.Context, m *HostGroupResourceModel) *HostGro
 		HostHeader:             m.HostHeader.ValueString(),
 		Path:                   m.Path.ValueString(),
 		Fingerprint:            m.Fingerprint.ValueString(),
+		CipherSuites:           m.CipherSuites.ValueString(),
 		OverrideSniFromAddress: m.OverrideSniFromAddress.ValueBool(),
 		KeepSniBlank:           m.KeepSniBlank.ValueBool(),
 		VerifyPeerCertByName:   m.VerifyPeerCertByName.ValueString(),
@@ -366,6 +369,11 @@ func flattenHostGroupToModel(hg *HostGroup, m *HostGroupResourceModel) {
 		m.Fingerprint = types.StringValue(hg.Fingerprint)
 	} else {
 		m.Fingerprint = types.StringNull()
+	}
+	if hg.CipherSuites != "" {
+		m.CipherSuites = types.StringValue(hg.CipherSuites)
+	} else {
+		m.CipherSuites = types.StringNull()
 	}
 	m.OverrideSniFromAddress = types.BoolValue(hg.OverrideSniFromAddress)
 	m.KeepSniBlank = types.BoolValue(hg.KeepSniBlank)
@@ -577,6 +585,14 @@ func hostGroupResourceSchema() schema.Schema {
 			},
 			"fingerprint": schema.StringAttribute{
 				Optional: true, Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"cipher_suites": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description: "TLS cipher suites for the generated share links (3x-ui v3.9.0+). " +
+					"Empty means the panel default.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},

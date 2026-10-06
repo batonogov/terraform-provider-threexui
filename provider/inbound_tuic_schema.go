@@ -16,15 +16,26 @@ import (
 // ---------------------------------------------------------------------------
 // TUIC v5 (3x-ui v3.8.0+)
 //
-// TUIC is terminated by a bundled `tuic-server` sidecar (not xray-core) which
-// relays into Xray, so per-client stats, routing and quotas work like any
-// other protocol (upstream #6337). The settings blob is
+// Since 3x-ui v3.9.0 TUIC is terminated by a native in-panel Go server
+// (internal/tuic/, BBR handled in-process, no sidecar binary to download);
+// on v3.8.x it was a bundled `tuic-server` sidecar. Either way it relays into
+// Xray, so per-client stats, routing and quotas work like any other protocol
+// (upstream #6337). The settings blob is
 // {"server": {...}, "clients": [...]} — nested exactly like AmneziaWG, but
 // with snake_case wire keys (tuic.TuicServerSettings json tags,
-// 3x-ui-3.8.5/internal/tuic/types.go:14-26). Unlike AmneziaWG the panel does
+// 3x-ui-3.9.0/internal/tuic/types.go:16-28). Unlike AmneziaWG the panel does
 // NOT generate the server block: defaults (bbr, native, info, 15, 3, 1500,
 // h3+spdy/3.1) are applied at read time by InstanceFromInbound, and the
 // certificate/private_key inline PEM pair is operator-supplied.
+//
+// Since v3.9.0 the panel also validates the server block on every inbound
+// save (normalizeTuicSettings, web/service/tuic_settings.go): an unknown
+// congestion_control/udp_relay_mode/log_level is a hard save error, and
+// max_udp_relay_packet_size in 65246-65507 is silently clamped to 65245 while
+// anything above 65507 fails. The schema validators below mirror that at plan
+// time; only canonical values are accepted because the panel rewrites the
+// aliases it recognises (reno→new_reno, warning→warn, case-folded), which
+// would otherwise surface as post-apply drift.
 //
 // Like WireGuard/AmneziaWG, the clients array is managed by threexui_inbound
 // itself, not by threexui_inbound_client — and the panel validates each peer
@@ -122,19 +133,23 @@ func tuicBool(description string) schema.BoolAttribute {
 
 func tuicSettingsBlock() schema.SingleNestedBlock {
 	return schema.SingleNestedBlock{
-		Description: "Settings for the TUIC v5 protocol (3x-ui v3.8.0+). TUIC is terminated by a bundled tuic-server sidecar that relays into Xray. " +
+		Description: "Settings for the TUIC v5 protocol (3x-ui v3.8.0+). Since 3x-ui v3.9.0 TUIC is terminated by a native in-panel Go server (on v3.8.x a bundled tuic-server sidecar) that relays into Xray. " +
 			"Users are managed here through `clients`, not through separate `threexui_inbound_client` resources.",
 		Blocks: map[string]schema.Block{
 			"server": schema.SingleNestedBlock{
 				Description: "TUIC server parameters. The certificate/private_key inline PEM pair is operator-supplied; every other field falls back to the panel's read-time defaults (bbr, native, info, 15, 3, 1500, [\"h3\",\"spdy/3.1\"]).",
 				Attributes: map[string]schema.Attribute{
-					"certificate": tuicString("Server certificate (inline PEM). Required for the tuic-server sidecar to actually serve; the panel accepts a save without it but the instance will not come up."),
+					"certificate": tuicString("Server certificate (inline PEM). Required for the TUIC server to actually serve; the panel accepts a save without it but the instance will not come up."),
 					"private_key": func() schema.StringAttribute {
 						a := tuicString("Server private key (inline PEM).", nonEmpty()...)
 						a.Sensitive = true
 						return a
 					}(),
-					"congestion_control": tuicString("Congestion control algorithm.",
+					// Only canonical spellings round-trip: the panel rewrites
+					// "reno" to "new_reno" and case-folds on save
+					// (NormalizeCongestionControl), and rejects anything else
+					// since v3.9.0.
+					"congestion_control": tuicString("Congestion control algorithm. The panel also accepts the \"reno\" alias but stores it as \"new_reno\", so the alias is rejected here.",
 						stringvalidator.OneOf("bbr", "cubic", "new_reno")),
 					"alpn": schema.ListAttribute{
 						Optional: true, Computed: true,
@@ -147,12 +162,18 @@ func tuicSettingsBlock() schema.SingleNestedBlock {
 					"udp_relay_mode": tuicString("UDP relay mode.",
 						stringvalidator.OneOf("native", "quic")),
 					"zero_rtt_handshake": tuicBool("Enable 0-RTT handshake."),
-					"log_level": tuicString("Sidecar log level.",
+					// The panel lowercases and maps "warning" to "warn" on save,
+					// so only the canonical set round-trips.
+					"log_level": tuicString("Server log level. The panel normalises case and the \"warning\" alias to \"warn\", so only the canonical values are accepted.",
 						stringvalidator.OneOf("info", "warn", "error", "debug")),
-					"max_idle_time":             tuicInt("Max idle time in seconds (panel default 15).", int64validator.AtLeast(1)),
-					"authentication_timeout":    tuicInt("Authentication timeout in seconds (panel default 3).", int64validator.AtLeast(1)),
-					"max_udp_relay_packet_size": tuicInt("Max UDP relay packet size in bytes (panel default 1500).", int64validator.AtLeast(1)),
-					"sni":                       tuicString("Server name indication override."),
+					"max_idle_time":          tuicInt("Max idle time in seconds (panel default 15).", int64validator.AtLeast(1)),
+					"authentication_timeout": tuicInt("Authentication timeout in seconds (panel default 3).", int64validator.AtLeast(1)),
+					// The panel silently clamps 65246-65507 to 65245 and rejects
+					// anything above 65507 (normalizeTuicSettings), so the clamp
+					// range is non-round-trippable and must fail at plan time.
+					"max_udp_relay_packet_size": tuicInt("Max UDP relay packet size in bytes (panel default 1500). Values 65246-65507 are rejected: the panel silently clamps them to 65245, which cannot round-trip.",
+						int64validator.Between(1, 65245)),
+					"sni": tuicString("Server name indication override."),
 				},
 			},
 			"clients": tuicClientsBlock(),

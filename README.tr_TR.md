@@ -97,6 +97,7 @@ resource "threexui_inbound_client" "client_a" {
 
 | 3x-ui sürümü | Durum |
 | --- | --- |
+| v3.9.0 | Test edildi |
 | v3.8.5 | Test edildi |
 | v3.8.0 | Test edildi |
 | v3.7.0 | Test edildi |

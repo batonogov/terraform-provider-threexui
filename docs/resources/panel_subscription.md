@@ -156,3 +156,41 @@ All attributes in this section require 3x-ui **v3.8.0+**; older panels ignore th
 - `sub_happ_auto_connect_type` (Optional, String) - Auto-connect type.
 - `sub_happ_per_app_mode` (Optional, String) - Per-app proxy mode.
 - `sub_happ_per_app_list` (Optional, String) - Per-app list.
+
+## v3.9.0+ subscription settings
+
+All attributes in this section require 3x-ui **v3.9.0+**; older panels ignore the values and read them back empty. `sub_happ_local_proxy_auth`, `sub_incy_app_auto_detect` and every `sub_incy_*` string are frozen into the subscription server at startup (`initRouter` captures them into the Happ/Incy controller config) — changing them triggers a **panel restart** (see the note at the top). The only per-request exception is `external_sub_user_agent`, which the panel reads live on every external-subscription fetch and therefore does **not** restart. For the Incy strings an empty value is meaningful: it omits the header so the subscriber's own app setting is left alone — configure `""` to clear a header rather than removing the attribute. The four URL fields (`sub_incy_announce_url`, `sub_incy_premium_url`, `sub_incy_banner_button_url`, `sub_incy_resolve_dns_domain`) are normalized on save by the panel's `common.EnsureURLScheme`: a scheme-less non-empty value like `example.com` is stored and read back as `https://example.com`. The provider treats the two spellings as semantically equal (as it already does for `sub_support_url`, `sub_profile_url` and the `sub_happ_*` links), so a scheme-less config value applies cleanly and does not produce a perpetual diff.
+
+- `external_sub_user_agent` (Optional, String) - User-Agent sent when the panel fetches external subscriptions (upstream default `v2rayNG/1.8.5`). Read per request — no restart.
+- `sub_happ_local_proxy_auth` (Optional, String) - Happ: local proxy authentication mode sent via the `Socks-Auth-Mode`/`Http-Auth-Mode` subscription headers (upstream default `auto`; an empty value omits the headers). Not a secret — the panel returns it unredacted.
+
+### Incy client customization
+
+- `sub_incy_app_auto_detect` (Optional, Boolean) - Auto-detect the client app.
+- `sub_incy_profile_description` (Optional, String) - Profile description.
+- `sub_incy_sort_order` (Optional, String) - Sort order.
+- `sub_incy_support_email` (Optional, String) - Support email.
+- `sub_incy_announce_url` (Optional, String) - Announcement URL. Scheme-less values are normalized to `https://…`.
+- `sub_incy_premium_url` (Optional, String) - Premium URL. Scheme-less values are normalized to `https://…`.
+- `sub_incy_banner_text` (Optional, String) - Banner text.
+- `sub_incy_banner_button_text` (Optional, String) - Banner button text.
+- `sub_incy_banner_button_url` (Optional, String) - Banner button URL. Scheme-less values are normalized to `https://…`.
+- `sub_incy_banner_bg_color` (Optional, String) - Banner background color.
+- `sub_incy_banner_button_color` (Optional, String) - Banner button color.
+- `sub_incy_hide_url` (Optional, String) - Hide URL.
+- `sub_incy_hide_check` (Optional, String) - Hide check.
+- `sub_incy_no_limit_enabled` (Optional, String) - No-limit flag (a stringified bool upstream).
+- `sub_incy_per_app_enable` (Optional, String) - Per-app proxy enable flag (a stringified bool upstream).
+- `sub_incy_per_app_mode` (Optional, String) - Per-app proxy mode.
+- `sub_incy_per_app_list` (Optional, String) - Per-app list.
+- `sub_incy_fragmentation_enable` (Optional, String) - Fragmentation enable flag (a stringified bool upstream).
+- `sub_incy_fragment_length` (Optional, String) - Fragment length.
+- `sub_incy_fragment_interval` (Optional, String) - Fragment interval.
+- `sub_incy_fragment_packets` (Optional, String) - Fragment packets.
+- `sub_incy_noises_enable` (Optional, String) - Noises enable flag (a stringified bool upstream).
+- `sub_incy_noises_type` (Optional, String) - Noises type.
+- `sub_incy_noises_packet` (Optional, String) - Noises packet.
+- `sub_incy_noises_delay` (Optional, String) - Noises delay.
+- `sub_incy_resolve_enable` (Optional, String) - Server-address resolve enable flag (a stringified bool upstream).
+- `sub_incy_resolve_dns_domain` (Optional, String) - Resolve DNS domain (treated as a URL upstream; scheme-less values are normalized to `https://…`).
+- `sub_incy_resolve_dns_ip` (Optional, String) - Resolve DNS IP.

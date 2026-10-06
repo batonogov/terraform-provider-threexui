@@ -63,6 +63,7 @@ type InboundClientResourceModel struct {
 	Group           types.String `tfsdk:"group"`
 	ResetDay        types.Int64  `tfsdk:"reset_day"`
 	ResetMax        types.Int64  `tfsdk:"reset_max"`
+	ResetWeekday    types.Int64  `tfsdk:"reset_weekday"`
 	TrafficReset    types.String `tfsdk:"traffic_reset"`
 	TrafficResetDay types.Int64  `tfsdk:"traffic_reset_day"`
 	Secret          types.String `tfsdk:"secret"`
@@ -267,6 +268,21 @@ func (r *InboundClientResource) Schema(_ context.Context, _ resource.SchemaReque
 					"3x-ui v3.7.0+; older panels report 0 (unsupported).",
 				Validators: []validator.Int64{
 					int64validator.AtLeast(0),
+				},
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
+			},
+			"reset_weekday": schema.Int64Attribute{
+				Optional: true,
+				Computed: true,
+				Description: "Calendar weekday (1-7, Monday-Sunday) on which this client renews weekly. " +
+					"0 disables weekly renewal. Mutually exclusive with a positive reset or reset_day: " +
+					"the panel rejects the combination (validateClientRenewal). " +
+					"3x-ui v3.9.0+; older panels report 0 (unsupported).",
+				Validators: []validator.Int64{
+					int64validator.Between(0, 7),
+					resetWeekdayExclusiveValidator{},
 				},
 				PlanModifiers: []planmodifier.Int64{
 					int64planmodifier.UseStateForUnknown(),
@@ -765,6 +781,9 @@ func expandInboundClientFromModel(m *InboundClientResourceModel) map[string]any 
 	if !m.ResetMax.IsNull() && !m.ResetMax.IsUnknown() {
 		client["resetMax"] = int(m.ResetMax.ValueInt64())
 	}
+	if !m.ResetWeekday.IsNull() && !m.ResetWeekday.IsUnknown() {
+		client["resetWeekday"] = int(m.ResetWeekday.ValueInt64())
+	}
 	if !m.TrafficReset.IsNull() && !m.TrafficReset.IsUnknown() {
 		client["trafficReset"] = m.TrafficReset.ValueString()
 	}
@@ -806,6 +825,7 @@ func inboundClientToModel(inboundID int, clientID string, client map[string]any)
 		Group:           stringValueOrNull(stringValue(client["group"])),
 		ResetDay:        types.Int64Value(int64(intValue(client["resetDay"]))),
 		ResetMax:        types.Int64Value(int64(intValue(client["resetMax"]))),
+		ResetWeekday:    types.Int64Value(int64(intValue(client["resetWeekday"]))),
 		TrafficReset:    stringValueOrNull(stringValue(client["trafficReset"])),
 		TrafficResetDay: types.Int64Value(int64(intValue(client["trafficResetDay"]))),
 		Secret:          stringValueOrNull(stringValue(client["secret"])),
@@ -856,6 +876,19 @@ func parseInboundSettings(settings string) (*inboundSettings, error) {
 	return &out, nil
 }
 
+// ensureInboundClientsKey writes an empty settings.clients array via
+// UpdateInbound when the key is absent, so the legacy client endpoints have
+// an array to append to.
+//
+// Since 3x-ui v3.9.0 the UpdateInbound call below is a silent no-op for the
+// clients array (keepStoredClients replaces posted clients with the stored
+// ones — 3x-ui-3.9.0/internal/web/service/inbound.go:1851-1862). It is left
+// in place rather than gated: it only fires when the settings carry no
+// clients key at all, which the v3.1.0+ /panel/api/clients/add endpoint does
+// not require (its service layer marshals {"clients": [...]} into the payload
+// itself), so the wasted no-op update is harmless, and the client has no
+// cheap panel-version signal to gate on — its probes distinguish API-surface
+// layouts, not versions.
 func ensureInboundClientsKey(ctx context.Context, client *Client, inboundID int) error {
 	if client == nil || inboundID == 0 {
 		return nil
