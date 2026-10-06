@@ -39,6 +39,14 @@ func TestEnsureURLSchemeValue(t *testing.T) {
 	}
 }
 
+// foreignStringValuable implements basetypes.StringValuable via embedding but
+// is neither urlSchemeNormalizedValue nor basetypes.StringValue — it exercises
+// the StringSemanticEquals fallback for value implementations the framework
+// itself never produces.
+type foreignStringValuable struct {
+	basetypes.StringValue
+}
+
 // TestURLSchemeNormalizedSemanticEquals: the prior-state value answers whether
 // a planned (config) value is the same URL modulo the panel's
 // common.EnsureURLScheme rewrite. This replaces a plan modifier — Terraform
@@ -117,6 +125,12 @@ func TestURLSchemeNormalizedSemanticEquals(t *testing.T) {
 			state: mkVal("https://example.com"),
 			new:   basetypes.NewStringValue("example.com"),
 			want:  true,
+		},
+		{
+			name:  "an unrelated StringValuable implementation is never semantically equal",
+			state: mkVal("https://example.com"),
+			new:   foreignStringValuable{StringValue: basetypes.NewStringValue("example.com")},
+			want:  false,
 		},
 		{
 			name:  "null new value is never semantically equal",
@@ -200,6 +214,11 @@ func TestURLSchemeNormalizedTypeConversions(t *testing.T) {
 		if _, ok := tv.(urlSchemeNormalizedValue); !ok {
 			t.Fatalf("ValueFromTerraform(%s) returned %T, want urlSchemeNormalizedValue", name, tv)
 		}
+	}
+
+	// A non-string Terraform value is a decode error.
+	if _, err := typ.ValueFromTerraform(ctx, tftypes.NewValue(tftypes.Bool, true)); err == nil {
+		t.Fatal("ValueFromTerraform with a bool value must return an error")
 	}
 }
 

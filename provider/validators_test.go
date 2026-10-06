@@ -443,7 +443,8 @@ func TestDurationValidator_SkipsNullAndUnknown(t *testing.T) {
 
 // inboundClientConfig builds a tfsdk.Config for threexui_inbound_client with
 // the given renewal attributes set; every other attribute is a typed null.
-func inboundClientConfig(t *testing.T, renewal map[string]int64) tfsdk.Config {
+// Attributes named in unknown are set to an unknown value instead of null.
+func inboundClientConfig(t *testing.T, renewal map[string]int64, unknown ...string) tfsdk.Config {
 	t.Helper()
 	r := &InboundClientResource{}
 	var schemaResp resource.SchemaResponse
@@ -457,6 +458,9 @@ func inboundClientConfig(t *testing.T, renewal map[string]int64) tfsdk.Config {
 	for k, v := range renewal {
 		out[k] = tftypes.NewValue(tftypes.Number, v)
 	}
+	for _, k := range unknown {
+		out[k] = tftypes.NewValue(tftypes.Number, tftypes.UnknownValue)
+	}
 	return tfsdk.Config{
 		Schema: schemaResp.Schema,
 		Raw:    tftypes.NewValue(objType, out),
@@ -468,19 +472,24 @@ func TestResetWeekdayExclusiveValidator(t *testing.T) {
 	cases := []struct {
 		name    string
 		config  map[string]int64
+		unknown []string
 		wantErr bool
 	}{
-		{"weekday alone", map[string]int64{"reset_weekday": 3}, false},
-		{"weekday with zero reset and reset_day", map[string]int64{"reset_weekday": 7, "reset": 0, "reset_day": 0}, false},
-		{"weekday disabled with rolling reset", map[string]int64{"reset_weekday": 0, "reset": 30}, false},
-		{"weekday disabled with reset_day", map[string]int64{"reset_weekday": 0, "reset_day": 15}, false},
-		{"weekday conflicts with reset", map[string]int64{"reset_weekday": 1, "reset": 30}, true},
-		{"weekday conflicts with reset_day", map[string]int64{"reset_weekday": 5, "reset_day": 15}, true},
-		{"reset without weekday", map[string]int64{"reset": 30}, false},
+		{name: "weekday alone", config: map[string]int64{"reset_weekday": 3}},
+		{name: "weekday with zero reset and reset_day", config: map[string]int64{"reset_weekday": 7, "reset": 0, "reset_day": 0}},
+		{name: "weekday disabled with rolling reset", config: map[string]int64{"reset_weekday": 0, "reset": 30}},
+		{name: "weekday disabled with reset_day", config: map[string]int64{"reset_weekday": 0, "reset_day": 15}},
+		{name: "weekday conflicts with reset", config: map[string]int64{"reset_weekday": 1, "reset": 30}, wantErr: true},
+		{name: "weekday conflicts with reset_day", config: map[string]int64{"reset_weekday": 5, "reset_day": 15}, wantErr: true},
+		{name: "reset without weekday", config: map[string]int64{"reset": 30}},
+		// An unknown reset/reset_day cannot conflict yet — the value is only
+		// known at apply, so the check defers instead of erroring.
+		{name: "weekday with unknown reset", config: map[string]int64{"reset_weekday": 3}, unknown: []string{"reset"}},
+		{name: "weekday with unknown reset_day", config: map[string]int64{"reset_weekday": 3}, unknown: []string{"reset_day"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			config := inboundClientConfig(t, tc.config)
+			config := inboundClientConfig(t, tc.config, tc.unknown...)
 			var weekday types.Int64
 			diags := config.GetAttribute(context.Background(), path.Root("reset_weekday"), &weekday)
 			if diags.HasError() {
@@ -495,6 +504,38 @@ func TestResetWeekdayExclusiveValidator(t *testing.T) {
 				t.Errorf("wantErr=%v, got diagnostics: %v", tc.wantErr, resp.Diagnostics)
 			}
 		})
+	}
+}
+
+// TestResetWeekdayExclusiveValidator_ConfigMissingPaths covers the defensive
+// GetAttribute error branch: when the validator runs against a config whose
+// schema lacks the reset/reset_day attributes, the framework diagnostics must
+// surface instead of a panic. That cannot happen on threexui_inbound_client
+// itself (both attributes are in its schema), so the test wires a config
+// built from a different resource's schema.
+func TestResetWeekdayExclusiveValidator_ConfigMissingPaths(t *testing.T) {
+	v := resetWeekdayExclusiveValidator{}
+	r := &HostGroupResource{}
+	var schemaResp resource.SchemaResponse
+	r.Schema(context.Background(), resource.SchemaRequest{}, &schemaResp)
+	ctx := context.Background()
+	objType := schemaResp.Schema.Type().TerraformType(ctx).(tftypes.Object)
+	out := map[string]tftypes.Value{}
+	for k := range schemaResp.Schema.Attributes {
+		out[k] = tftypes.NewValue(objType.AttributeTypes[k], nil)
+	}
+	config := tfsdk.Config{
+		Schema: schemaResp.Schema,
+		Raw:    tftypes.NewValue(objType, out),
+	}
+
+	resp := &validator.Int64Response{}
+	v.ValidateInt64(context.Background(), validator.Int64Request{
+		ConfigValue: types.Int64Value(3),
+		Config:      config,
+	}, resp)
+	if !resp.Diagnostics.HasError() {
+		t.Error("expected diagnostics when the config schema lacks reset/reset_day")
 	}
 }
 

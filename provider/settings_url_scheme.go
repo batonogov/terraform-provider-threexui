@@ -68,16 +68,18 @@ func (t urlSchemeNormalizedType) ValueFromString(_ context.Context, in basetypes
 	return urlSchemeNormalizedValue{StringValue: in}, nil
 }
 
-func (t urlSchemeNormalizedType) ValueFromTerraform(ctx context.Context, in tftypes.Value) (attr.Value, error) {
-	v, err := t.StringType.ValueFromTerraform(ctx, in)
-	if err != nil {
-		return nil, err
+func (t urlSchemeNormalizedType) ValueFromTerraform(_ context.Context, in tftypes.Value) (attr.Value, error) {
+	if !in.IsKnown() {
+		return urlSchemeNormalizedValue{StringValue: types.StringUnknown()}, nil
 	}
-	sv, ok := v.(basetypes.StringValue)
-	if !ok {
-		return nil, fmt.Errorf("expected basetypes.StringValue, got %T", v)
+	if in.IsNull() {
+		return urlSchemeNormalizedValue{StringValue: types.StringNull()}, nil
 	}
-	return urlSchemeNormalizedValue{StringValue: sv}, nil
+	var s string
+	if err := in.As(&s); err != nil {
+		return nil, fmt.Errorf("expected a string value: %w", err)
+	}
+	return newURLSchemeNormalizedValue(s), nil
 }
 
 // urlSchemeNormalizedValue carries the EnsureURLScheme-aware equality. The

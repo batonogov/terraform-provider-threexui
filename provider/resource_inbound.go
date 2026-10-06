@@ -554,6 +554,9 @@ func normalizePeerMap(m map[string]any) map[string]any {
 		return m
 	}
 	var out map[string]any
+	// Unmarshal cannot fail here: encoded is the output of the json.Marshal
+	// call above, and any JSON object decodes into map[string]any. The branch
+	// exists only so err is not ignored; it is unreachable in practice.
 	if err := json.Unmarshal(encoded, &out); err != nil {
 		return m
 	}
@@ -1287,6 +1290,9 @@ func (r *InboundResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 	var stateModel, planModel InboundResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &stateModel)...)
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &planModel)...)
+	// A plan/state produced by Terraform always decodes into the resource
+	// model; this guard only satisfies the framework contract and cannot fire
+	// with a well-formed plan.
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -1330,6 +1336,8 @@ func (r *InboundResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 		for name, typ := range ownedPeerClientAttrTypes[protocol] {
 			p := path.Root(block).AtName("clients").AtListIndex(idx).AtName(name)
 			var v attr.Value
+			// The path is built from an index taken from the plan itself, so
+			// GetAttribute cannot fail on a well-formed plan.
 			resp.Diagnostics.Append(resp.Plan.GetAttribute(ctx, p, &v)...)
 			if resp.Diagnostics.HasError() {
 				return
@@ -1337,6 +1345,8 @@ func (r *InboundResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 			if !v.IsNull() {
 				continue
 			}
+			// typ comes from the resource's own schema, so constructing an
+			// unknown value of it cannot fail.
 			unknown, err := typ.ValueFromTerraform(ctx, tftypes.NewValue(typ.TerraformType(ctx), tftypes.UnknownValue))
 			if err != nil {
 				resp.Diagnostics.AddError("Failed to plan new peer attribute as unknown", err.Error())

@@ -140,6 +140,11 @@ func TestDiffInboundOwnedPeers(t *testing.T) {
 			observed: []any{},
 		},
 		{
+			name:     "non-map entries are skipped on both sides",
+			plan:     []any{"junk", peer("a", "publicKey", "pk")},
+			observed: []any{float64(42), peer("a", "publicKey", "pk")},
+		},
+		{
 			name:     "observed peer without email is left alone",
 			plan:     []any{},
 			observed: []any{map[string]any{"publicKey": "pk"}},
@@ -453,6 +458,69 @@ func TestReconcileInboundOwnedPeers(t *testing.T) {
 			t.Fatalf("expected (nil, nil), got (%v, %v)", got, err)
 		}
 	})
+
+	// failReconcileServer serves the probe and a get that never converges,
+	// and fails the endpoint named by failPrefix with failMsg.
+	failReconcileServer := func(t *testing.T, storedSettings string, failPrefix, failMsg string) *httptest.Server {
+		t.Helper()
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			switch {
+			case req.URL.Path == "/panel/api/clients/list":
+				_, _ = w.Write(okResponse([]any{}))
+			case strings.HasPrefix(req.URL.Path, failPrefix):
+				_, _ = w.Write(failResponse(failMsg))
+			case req.URL.Path == "/panel/api/inbounds/get/7":
+				_, _ = w.Write(okResponse(map[string]any{
+					"id": 7, "remark": "r", "enable": true, "port": 25070,
+					"protocol": "wireguard", "settings": storedSettings,
+					"sniffing": "{}", "streamSettings": "{}",
+				}))
+			default:
+				w.WriteHeader(http.StatusNotFound)
+			}
+		}))
+		t.Cleanup(srv.Close)
+		return srv
+	}
+
+	t.Run("del failure surfaces", func(t *testing.T) {
+		stored := `{"clients":[{"email":"a@t.com","publicKey":"pkA"}]}`
+		srv := failReconcileServer(t, stored, "/panel/api/clients/del/", "cannot delete")
+		r := &InboundResource{client: newTestClient(t, srv.URL)}
+		_, err := r.reconcileInboundOwnedPeers(context.Background(), 7, "wireguard", `{"clients":[]}`, &Inbound{ID: 7, Settings: stored})
+		if err == nil || !strings.Contains(err.Error(), `removing peer "a@t.com"`) {
+			t.Fatalf("expected a removing-peer error, got %v", err)
+		}
+	})
+
+	t.Run("update failure surfaces", func(t *testing.T) {
+		stored := `{"clients":[{"email":"a@t.com","publicKey":"pkA","comment":"old"}]}`
+		srv := failReconcileServer(t, stored, "/panel/api/clients/update/", "cannot update")
+		r := &InboundResource{client: newTestClient(t, srv.URL)}
+		plan := `{"clients":[{"email":"a@t.com","publicKey":"pkA","comment":"new"}]}`
+		_, err := r.reconcileInboundOwnedPeers(context.Background(), 7, "wireguard", plan, &Inbound{ID: 7, Settings: stored})
+		if err == nil || !strings.Contains(err.Error(), `updating peer "a@t.com"`) {
+			t.Fatalf("expected an updating-peer error, got %v", err)
+		}
+	})
+
+	t.Run("read failure exhausts the poll", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			switch req.URL.Path {
+			case "/panel/api/clients/list":
+				_, _ = w.Write(okResponse([]any{}))
+			default:
+				http.Error(w, "boom", http.StatusInternalServerError)
+			}
+		}))
+		defer srv.Close()
+
+		r := &InboundResource{client: newTestClient(t, srv.URL)}
+		_, err := r.reconcileInboundOwnedPeers(context.Background(), 7, "wireguard", planSettings, &Inbound{ID: 7, Settings: "{}"})
+		if err == nil || !strings.Contains(err.Error(), "reconciled peers are not visible on the panel") {
+			t.Fatalf("expected a poll-exhaustion error, got %v", err)
+		}
+	})
 }
 
 func awgPeerModel(email, comment string, updatedAt int64) InboundAmneziawgClientModel {
@@ -606,6 +674,97 @@ func TestEditedOwnedPeerMarks(t *testing.T) {
 	t.Run("unchanged tuic peer yields nothing", func(t *testing.T) {
 		if got := editedOwnedPeerMarks("tuic", tuic(tuicPeerModel("a", "x", "", 500)), tuic(tuicPeerModel("a", "x", "", 500))); got != nil {
 			t.Fatalf("expected nil, got %v", got)
+		}
+	})
+
+	t.Run("plan peer without an email is skipped", func(t *testing.T) {
+		state := wg(wgPeer("a", "old"))
+		plan := wg(InboundWireguardClientModel{}, wgPeer("a", "new"))
+		got := editedOwnedPeerMarks("wireguard", state, plan)
+		if len(got) != 1 {
+			t.Fatalf("expected marks only for the emailable peer, got %v", got)
+		}
+		if _, ok := got[0]; ok {
+			t.Fatalf("the email-less peer at index 0 must be skipped, got %v", got)
+		}
+	})
+}
+
+// TestPeerHelperGuards covers the defensive guard branches of the peer
+// helpers: nil/unknown inputs and can't-produce-a-value expander paths.
+func TestPeerHelperGuards(t *testing.T) {
+	t.Run("normalizePeerMap returns the input when it cannot be marshalled", func(t *testing.T) {
+		in := map[string]any{"ch": make(chan int)}
+		got := normalizePeerMap(in)
+		if _, ok := got["ch"].(chan int); !ok {
+			t.Fatalf("expected the input back unchanged, got %v", got)
+		}
+	})
+
+	t.Run("ownedPeerCount", func(t *testing.T) {
+		if got := ownedPeerCount("vless", &InboundResourceModel{}); got != 0 {
+			t.Errorf("unknown protocol: got %d", got)
+		}
+		if got := ownedPeerCount("wireguard", nil); got != 0 {
+			t.Errorf("nil model: got %d", got)
+		}
+	})
+
+	t.Run("expandOwnedPeerAt guards", func(t *testing.T) {
+		for _, tc := range []struct {
+			name     string
+			protocol string
+			m        *InboundResourceModel
+			i        int
+		}{
+			{"unknown protocol", "vless", &InboundResourceModel{}, 0},
+			{"nil model amneziawg", "amneziawg", nil, 0},
+			{"nil model wireguard", "wireguard", nil, 0},
+			{"nil model tuic", "tuic", nil, 0},
+			{"settings absent amneziawg", "amneziawg", &InboundResourceModel{}, 0},
+			{"settings absent wireguard", "wireguard", &InboundResourceModel{}, 0},
+			{"settings absent tuic", "tuic", &InboundResourceModel{}, 0},
+			{"index out of range", "wireguard", &InboundResourceModel{WireguardSettings: &InboundWireguardSettingsModel{}}, 4},
+			// An all-null client expands to an empty entry the batch expander
+			// drops, exercising the length-mismatch fallback.
+			{"empty expansion", "amneziawg", &InboundResourceModel{AmneziawgSettings: &InboundAmneziawgSettingsModel{
+				Clients: []InboundAmneziawgClientModel{{}},
+			}}, 0},
+		} {
+			if got := expandOwnedPeerAt(tc.protocol, tc.m, tc.i); len(got) != 0 {
+				t.Errorf("%s: expected empty map, got %v", tc.name, got)
+			}
+		}
+	})
+
+	t.Run("ownedPeerAttrIsEmpty unknown attribute", func(t *testing.T) {
+		m := &InboundResourceModel{WireguardSettings: &InboundWireguardSettingsModel{
+			Clients: []InboundWireguardClientModel{{Email: types.StringValue("a")}},
+		}}
+		if ownedPeerAttrIsEmpty("wireguard", m, 0, "no_such_attr") {
+			t.Error("unknown attribute must report not-empty")
+		}
+		if ownedPeerAttrIsEmpty("vless", m, 0, "sub_id") {
+			t.Error("unknown protocol must report not-empty")
+		}
+	})
+
+	t.Run("newOwnedPeerIndexes guards", func(t *testing.T) {
+		m := &InboundResourceModel{}
+		if got := newOwnedPeerIndexes("vless", m, m); got != nil {
+			t.Errorf("unknown protocol: got %v", got)
+		}
+		if got := newOwnedPeerIndexes("wireguard", nil, m); got != nil {
+			t.Errorf("nil state: got %v", got)
+		}
+		if got := newOwnedPeerIndexes("wireguard", m, nil); got != nil {
+			t.Errorf("nil plan: got %v", got)
+		}
+	})
+
+	t.Run("materializedPeerAttrs unknown protocol", func(t *testing.T) {
+		if got := materializedPeerAttrs("vless"); got != nil {
+			t.Errorf("got %v", got)
 		}
 	})
 }
@@ -1192,6 +1351,104 @@ func TestInboundResourceCreatePeerSafetyNet(t *testing.T) {
 	})
 }
 
+// TestInboundResourceCreateReconcileAndEnableErrors covers the Create-time
+// error branches of the two post-write reconciliations: a peer the panel
+// dropped that cannot be re-added, and an enable flag the panel dropped whose
+// setEnable push fails.
+func TestInboundResourceCreateReconcileAndEnableErrors(t *testing.T) {
+	planModel := wgModel("", "r",
+		wgPeerModel("a@t.com", "public_key", "pkA", "allowed_ips", "10.0.0.2/32"),
+	)
+
+	newServer := func(t *testing.T, dropClients bool, storedEnable bool, setEnableErr bool) *httptest.Server {
+		t.Helper()
+		var settings map[string]any
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case r.URL.Path == "/panel/api/clients/list":
+				_, _ = w.Write(okResponse([]any{}))
+			case r.URL.Path == "/panel/api/inbounds/add" && r.Method == http.MethodPost:
+				_ = r.ParseForm()
+				settings = map[string]any{}
+				_ = json.Unmarshal([]byte(r.Form.Get("settings")), &settings)
+				if dropClients {
+					delete(settings, "clients")
+				}
+				b, _ := json.Marshal(settings)
+				_, _ = w.Write(okResponse(map[string]any{
+					"id": 7, "remark": "r", "enable": storedEnable, "port": 25070,
+					"protocol": "wireguard", "settings": string(b),
+					"sniffing": "{}", "streamSettings": "{}",
+				}))
+			case r.URL.Path == "/panel/api/inbounds/get/7":
+				b, _ := json.Marshal(settings)
+				_, _ = w.Write(okResponse(map[string]any{
+					"id": 7, "remark": "r", "enable": storedEnable, "port": 25070,
+					"protocol": "wireguard", "settings": string(b),
+					"sniffing": "{}", "streamSettings": "{}",
+				}))
+			case r.URL.Path == "/panel/api/clients/add" && r.Method == http.MethodPost:
+				_, _ = w.Write(failResponse("Duplicate email: a@t.com"))
+			case r.URL.Path == "/panel/api/inbounds/setEnable/7" && r.Method == http.MethodPost:
+				if setEnableErr {
+					_, _ = w.Write(failResponse("cannot set enable"))
+					return
+				}
+				_, _ = w.Write(okResponse(nil))
+			default:
+				w.WriteHeader(http.StatusNotFound)
+			}
+		}))
+	}
+
+	t.Run("peer reconcile failure is a create error", func(t *testing.T) {
+		srv := newServer(t, true, true, false)
+		defer srv.Close()
+		r := &InboundResource{client: newTestClient(t, srv.URL)}
+		plan := inboundResourceFixture(t, r, planModel)
+		resp := newInboundResourceCreateResponse(t, r)
+		r.Create(context.Background(), resource.CreateRequest{Plan: plan}, &resp)
+		if !resp.Diagnostics.HasError() {
+			t.Fatal("expected an error when the dropped peer cannot be re-added")
+		}
+		if got := resp.Diagnostics.Errors()[0].Summary(); got != "Failed to reconcile inbound peers" {
+			t.Fatalf("unexpected diagnostic summary: %q", got)
+		}
+	})
+
+	t.Run("enable push failure is a create error", func(t *testing.T) {
+		srv := newServer(t, false, false, true)
+		defer srv.Close()
+		r := &InboundResource{client: newTestClient(t, srv.URL)}
+		plan := inboundResourceFixture(t, r, planModel)
+		resp := newInboundResourceCreateResponse(t, r)
+		r.Create(context.Background(), resource.CreateRequest{Plan: plan}, &resp)
+		if !resp.Diagnostics.HasError() {
+			t.Fatal("expected an error when the dropped enable flag cannot be pushed")
+		}
+		if got := resp.Diagnostics.Errors()[0].Summary(); got != "Failed to reconcile inbound enable state" {
+			t.Fatalf("unexpected diagnostic summary: %q", got)
+		}
+	})
+
+	t.Run("enable push success updates the local copy", func(t *testing.T) {
+		srv := newServer(t, false, false, false)
+		defer srv.Close()
+		r := &InboundResource{client: newTestClient(t, srv.URL)}
+		plan := inboundResourceFixture(t, r, planModel)
+		resp := newInboundResourceCreateResponse(t, r)
+		r.Create(context.Background(), resource.CreateRequest{Plan: plan}, &resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("unexpected error on Create: %v", resp.Diagnostics)
+		}
+		var got InboundResourceModel
+		resp.State.Get(context.Background(), &got)
+		if !got.Enable.ValueBool() {
+			t.Error("expected the pushed enable=true in state")
+		}
+	})
+}
+
 // TestInboundResourceUpdateErrorSurfaces covers the failure branch of the
 // locked update section: the update endpoint rejects the write, the error
 // reaches the diagnostics, and — because the lock is released before the
@@ -1226,6 +1483,196 @@ func TestInboundResourceUpdateErrorSurfaces(t *testing.T) {
 	}
 	if got := resp.Diagnostics.Errors()[0].Summary(); got != "Failed to update inbound" {
 		t.Fatalf("unexpected diagnostic summary: %q", got)
+	}
+}
+
+// TestInboundResourceUpdatePollBranches covers the error and retry branches
+// inside updateInboundAndReconcilePeers' read-after-write poll: a GET that
+// keeps failing, a setEnable push that fails, an enable flip that needs one
+// retry to become visible, and a peer reconciliation that fails.
+func TestInboundResourceUpdatePollBranches(t *testing.T) {
+	storedInbound := func(enable bool, clients string) map[string]any {
+		return map[string]any{
+			"id": 7, "remark": "after", "enable": enable, "port": 25070,
+			"protocol": "wireguard", "settings": fmt.Sprintf(`{"clients":[%s]}`, clients),
+			"sniffing": "{}", "streamSettings": "{}",
+		}
+	}
+	peerA := `{"email":"a@t.com","publicKey":"pkA"}`
+
+	runUpdate := func(t *testing.T, srv *httptest.Server, planEnable bool) resource.UpdateResponse {
+		t.Helper()
+		r := &InboundResource{client: newTestClient(t, srv.URL)}
+		stateModel := wgModel("7", "before", wgPeerModel("a@t.com", "public_key", "pkA"))
+		planModel := wgModel("7", "after", wgPeerModel("a@t.com", "public_key", "pkA"))
+		planModel.Enable = types.BoolValue(planEnable)
+		plan := inboundResourceFixture(t, r, planModel)
+		state := tfsdk.State(inboundResourceFixture(t, r, stateModel))
+		resp := newInboundResourceUpdateResponse(t, r)
+		r.Update(context.Background(), resource.UpdateRequest{Plan: plan, State: state}, &resp)
+		return resp
+	}
+
+	t.Run("get failure inside the poll exhausts the budget", func(t *testing.T) {
+		var getCalls atomic.Int32
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			switch req.URL.Path {
+			case "/panel/api/inbounds/get/7":
+				// The pre-update read succeeds; every poll read fails.
+				if getCalls.Add(1) == 1 {
+					_, _ = w.Write(okResponse(storedInbound(true, peerA)))
+					return
+				}
+				http.Error(w, "boom", http.StatusInternalServerError)
+			case "/panel/api/inbounds/update/7":
+				_, _ = w.Write(okResponse(nil))
+			default:
+				w.WriteHeader(http.StatusNotFound)
+			}
+		}))
+		defer srv.Close()
+
+		resp := runUpdate(t, srv, true)
+		if !resp.Diagnostics.HasError() {
+			t.Fatal("expected an error when the poll reads keep failing")
+		}
+		if got := resp.Diagnostics.Errors()[0].Summary(); got != "Failed to update inbound" {
+			t.Fatalf("unexpected diagnostic summary: %q", got)
+		}
+		if got := resp.Diagnostics.Errors()[0].Detail(); !strings.Contains(got, "reading updated inbound 7") {
+			t.Fatalf("expected the read-after-write context, got %q", got)
+		}
+	})
+
+	t.Run("setEnable failure inside the poll", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			switch req.URL.Path {
+			case "/panel/api/inbounds/get/7":
+				_, _ = w.Write(okResponse(storedInbound(false, peerA)))
+			case "/panel/api/inbounds/update/7":
+				_, _ = w.Write(okResponse(nil))
+			case "/panel/api/inbounds/setEnable/7":
+				_, _ = w.Write(failResponse("cannot set enable"))
+			default:
+				w.WriteHeader(http.StatusNotFound)
+			}
+		}))
+		defer srv.Close()
+
+		resp := runUpdate(t, srv, true)
+		if !resp.Diagnostics.HasError() {
+			t.Fatal("expected an error when the setEnable push fails")
+		}
+	})
+
+	t.Run("enable flip becomes visible after one retry", func(t *testing.T) {
+		enable := false
+		var setEnableCalls atomic.Int32
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			switch req.URL.Path {
+			case "/panel/api/inbounds/get/7":
+				_, _ = w.Write(okResponse(storedInbound(enable, peerA)))
+			case "/panel/api/inbounds/update/7":
+				// keepStoredClients: the stored enable wins.
+				_, _ = w.Write(okResponse(nil))
+			case "/panel/api/inbounds/setEnable/7":
+				_ = req.ParseForm()
+				enable = req.Form.Get("enable") == "true"
+				setEnableCalls.Add(1)
+				_, _ = w.Write(okResponse(nil))
+			default:
+				w.WriteHeader(http.StatusNotFound)
+			}
+		}))
+		defer srv.Close()
+
+		resp := runUpdate(t, srv, true)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("unexpected error: %v", resp.Diagnostics)
+		}
+		if got := setEnableCalls.Load(); got != 1 {
+			t.Errorf("expected exactly 1 setEnable push, got %d", got)
+		}
+		var got InboundResourceModel
+		resp.State.Get(context.Background(), &got)
+		if !got.Enable.ValueBool() {
+			t.Error("expected enable=true in state after the flip")
+		}
+	})
+
+	t.Run("peer reconcile failure inside the update", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			switch req.URL.Path {
+			case "/panel/api/clients/list":
+				_, _ = w.Write(okResponse([]any{}))
+			case "/panel/api/inbounds/get/7":
+				// keepStoredClients: the new peer never appears on reads.
+				_, _ = w.Write(okResponse(storedInbound(true, peerA)))
+			case "/panel/api/inbounds/update/7":
+				_, _ = w.Write(okResponse(nil))
+			case "/panel/api/clients/add":
+				_, _ = w.Write(failResponse("Duplicate email: b@t.com"))
+			default:
+				w.WriteHeader(http.StatusNotFound)
+			}
+		}))
+		defer srv.Close()
+
+		r := &InboundResource{client: newTestClient(t, srv.URL)}
+		stateModel := wgModel("7", "before", wgPeerModel("a@t.com", "public_key", "pkA"))
+		planModel := wgModel("7", "after",
+			wgPeerModel("a@t.com", "public_key", "pkA"),
+			wgPeerModel("b@t.com", "public_key", "pkB"),
+		)
+		plan := inboundResourceFixture(t, r, planModel)
+		state := tfsdk.State(inboundResourceFixture(t, r, stateModel))
+		resp := newInboundResourceUpdateResponse(t, r)
+		r.Update(context.Background(), resource.UpdateRequest{Plan: plan, State: state}, &resp)
+		if !resp.Diagnostics.HasError() {
+			t.Fatal("expected an error when the peer reconciliation fails")
+		}
+		if got := resp.Diagnostics.Errors()[0].Detail(); !strings.Contains(got, "adding peer") {
+			t.Fatalf("expected the adding-peer context, got %q", got)
+		}
+	})
+
+	t.Run("malformed stored settings fail preserveInboundSettings", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			if req.URL.Path == "/panel/api/inbounds/get/7" {
+				_, _ = w.Write(okResponse(map[string]any{
+					"id": 7, "remark": "before", "enable": true, "port": 25070,
+					"protocol": "wireguard", "settings": `{"clients":`,
+					"sniffing": "{}", "streamSettings": "{}",
+				}))
+				return
+			}
+			w.WriteHeader(http.StatusNotFound)
+		}))
+		defer srv.Close()
+
+		resp := runUpdate(t, srv, true)
+		if !resp.Diagnostics.HasError() {
+			t.Fatal("expected an error when the stored settings cannot be parsed")
+		}
+		if got := resp.Diagnostics.Errors()[0].Summary(); got != "Failed to preserve inbound settings" {
+			t.Fatalf("unexpected diagnostic summary: %q", got)
+		}
+	})
+}
+
+// TestExpandInboundFromModelNodeID covers the optional node assignment in the
+// model-to-API conversion.
+func TestExpandInboundFromModelNodeID(t *testing.T) {
+	m := &InboundResourceModel{
+		Remark:   types.StringValue("r"),
+		Enable:   types.BoolValue(true),
+		Port:     types.Int64Value(25070),
+		Protocol: types.StringValue("vless"),
+		NodeID:   types.Int64Value(3),
+	}
+	inbound := expandInboundFromModel(m)
+	if inbound.NodeID == nil || *inbound.NodeID != 3 {
+		t.Fatalf("expected NodeID=3, got %v", inbound.NodeID)
 	}
 }
 
@@ -1281,6 +1728,125 @@ func TestInboundResourceModifyPlanEarlyReturns(t *testing.T) {
 		}
 		if !resp.Plan.Raw.Equal(plan.Raw) {
 			t.Fatal("plan must be untouched when it equals state")
+		}
+	})
+
+	t.Run("non-reconciled protocol leaves the plan untouched", func(t *testing.T) {
+		vlessState := &InboundResourceModel{
+			ID: types.StringValue("7"), Remark: types.StringValue("r"),
+			Enable: types.BoolValue(true), Port: types.Int64Value(25070), Protocol: types.StringValue("vless"),
+		}
+		vlessPlan := &InboundResourceModel{
+			ID: types.StringValue("7"), Remark: types.StringValue("r2"),
+			Enable: types.BoolValue(true), Port: types.Int64Value(25070), Protocol: types.StringValue("vless"),
+		}
+		p := inboundResourceFixture(t, r, vlessPlan)
+		st := tfsdk.State(inboundResourceFixture(t, r, vlessState))
+		resp := &resource.ModifyPlanResponse{Plan: p}
+		r.ModifyPlan(ctx, resource.ModifyPlanRequest{Plan: p, State: st}, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("unexpected error: %v", resp.Diagnostics)
+		}
+		var remark types.String
+		resp.Diagnostics.Append(resp.Plan.GetAttribute(ctx, path.Root("remark"), &remark)...)
+		if remark.ValueString() != "r2" {
+			t.Fatalf("vless remark must stay promised, got %v", remark)
+		}
+	})
+}
+
+func TestInboundResourceModifyPlanWireguardAndAllowedIPsMarks(t *testing.T) {
+	r := &InboundResource{}
+	ctx := context.Background()
+	var schemaResp resource.SchemaResponse
+	r.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
+
+	get := func(p *tfsdk.Plan, block string, idx int, attrName string) attr.Value {
+		var v attr.Value
+		diags := p.GetAttribute(ctx, path.Root(block).AtName("clients").AtListIndex(idx).AtName(attrName), &v)
+		if diags.HasError() {
+			t.Fatalf("reading %s of peer %d: %v", attrName, idx, diags)
+		}
+		return v
+	}
+	run := func(state, plan *InboundResourceModel) tfsdk.Plan {
+		p := inboundResourceFixture(t, r, plan)
+		st := tfsdk.State(inboundResourceFixture(t, r, state))
+		resp := &resource.ModifyPlanResponse{Plan: p}
+		r.ModifyPlan(ctx, resource.ModifyPlanRequest{Plan: p, State: st}, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("unexpected error: %v", resp.Diagnostics)
+		}
+		return resp.Plan
+	}
+
+	t.Run("wireguard edited peer marks empty sub_id", func(t *testing.T) {
+		peer := func(comment string) InboundWireguardClientModel {
+			return InboundWireguardClientModel{
+				Email:      types.StringValue("a@t.com"),
+				PublicKey:  types.StringValue("pkA"),
+				Comment:    types.StringValue(comment),
+				AllowedIPs: types.ListNull(types.StringType),
+			}
+		}
+		wgSettings := func(comment string) *InboundWireguardSettingsModel {
+			return &InboundWireguardSettingsModel{
+				MTU:     types.ListNull(types.Int64Type),
+				Gateway: types.ListNull(types.StringType),
+				DNS:     types.ListNull(types.StringType),
+				Clients: []InboundWireguardClientModel{peer(comment)},
+			}
+		}
+		state := &InboundResourceModel{
+			ID: types.StringValue("7"), Remark: types.StringValue("r"),
+			Enable: types.BoolValue(true), Port: types.Int64Value(25070), Protocol: types.StringValue("wireguard"),
+			WireguardSettings: wgSettings("old"),
+		}
+		plan := &InboundResourceModel{
+			ID: types.StringValue("7"), Remark: types.StringValue("r"),
+			Enable: types.BoolValue(true), Port: types.Int64Value(25070), Protocol: types.StringValue("wireguard"),
+			WireguardSettings: wgSettings("new"),
+		}
+		out := run(state, plan)
+		if v := get(&out, "wireguard_settings", 0, "sub_id"); !v.IsUnknown() {
+			t.Errorf("expected sub_id of the edited wireguard peer to be unknown, got %v", v)
+		}
+		if v := get(&out, "wireguard_settings", 0, "allowed_ips"); !v.IsUnknown() {
+			t.Errorf("expected allowed_ips (null in plan) of the edited wireguard peer to be unknown, got %v", v)
+		}
+		if v := get(&out, "wireguard_settings", 0, "comment"); v.IsUnknown() {
+			t.Errorf("comment is configured; it must stay promised, got unknown")
+		}
+	})
+
+	t.Run("amneziawg edited peer with null allowed_ips plans a list unknown", func(t *testing.T) {
+		peer := func(comment string) InboundAmneziawgClientModel {
+			return InboundAmneziawgClientModel{
+				Email:      types.StringValue("a@t.com"),
+				PublicKey:  types.StringValue("pkA"),
+				Comment:    types.StringValue(comment),
+				AllowedIPs: types.ListNull(types.StringType),
+				CreatedAt:  types.Int64Value(500),
+				UpdatedAt:  types.Int64Value(1000),
+			}
+		}
+		state := &InboundResourceModel{
+			ID: types.StringValue("7"), Remark: types.StringValue("r"),
+			Enable: types.BoolValue(true), Port: types.Int64Value(25070), Protocol: types.StringValue("amneziawg"),
+			AmneziawgSettings: &InboundAmneziawgSettingsModel{Clients: []InboundAmneziawgClientModel{peer("old")}},
+		}
+		plan := &InboundResourceModel{
+			ID: types.StringValue("7"), Remark: types.StringValue("r"),
+			Enable: types.BoolValue(true), Port: types.Int64Value(25070), Protocol: types.StringValue("amneziawg"),
+			AmneziawgSettings: &InboundAmneziawgSettingsModel{Clients: []InboundAmneziawgClientModel{peer("new")}},
+		}
+		out := run(state, plan)
+		v := get(&out, "amneziawg_settings", 0, "allowed_ips")
+		if !v.IsUnknown() {
+			t.Fatalf("expected allowed_ips unknown, got %v", v)
+		}
+		if _, ok := v.(types.List); !ok {
+			t.Errorf("allowed_ips unknown must be a list value, got %T", v)
 		}
 	})
 }
