@@ -407,6 +407,9 @@ func expandTLSSettings(list []any) map[string]any {
 	if v, ok := item["fingerprint"].(string); ok && v != "" {
 		out["fingerprint"] = v
 	}
+	if v, ok := item["use_system_ca"]; ok {
+		out["useSystemCA"] = boolValue(v)
+	}
 	if v, ok := item["allow_insecure"]; ok {
 		out["allowInsecure"] = boolValue(v)
 	}
@@ -522,6 +525,9 @@ func flattenTLSSettings(in map[string]any) map[string]any {
 	}
 	if v, ok := in["fingerprint"].(string); ok {
 		out["fingerprint"] = v
+	}
+	if v, ok := in["useSystemCA"].(bool); ok {
+		out["use_system_ca"] = v
 	}
 	if v, ok := in["allowInsecure"].(bool); ok {
 		out["allow_insecure"] = v

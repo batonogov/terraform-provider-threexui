@@ -19,6 +19,7 @@ import (
 // ---------------------------------------------------------------------------
 
 type XrayDNSModel struct {
+	Script                 types.String    `tfsdk:"script"`
 	ID                     types.String    `tfsdk:"id"`
 	Server                 []XrayDNSServer `tfsdk:"server"`
 	Hosts                  types.Map       `tfsdk:"hosts"`
@@ -33,6 +34,7 @@ type XrayDNSModel struct {
 }
 
 type XrayDNSServer struct {
+	ID            types.String `tfsdk:"id"`
 	Address       types.String `tfsdk:"address"`
 	Port          types.Int64  `tfsdk:"port"`
 	Domains       types.List   `tfsdk:"domains"`
@@ -51,6 +53,11 @@ type XrayDNSServer struct {
 func xrayDNSSchema() schema.Schema {
 	return schema.Schema{
 		Attributes: map[string]schema.Attribute{
+			"script": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   "Path to a Lua script on the panel host (3x-ui v3.10.0+). Set an empty string to disable; omission preserves the prior value.",
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
 			"id": schema.StringAttribute{
 				Computed: true,
 				PlanModifiers: []planmodifier.String{
@@ -118,6 +125,11 @@ func xrayDNSSchema() schema.Schema {
 			"server": schema.ListNestedBlock{
 				NestedObject: schema.NestedBlockObject{
 					Attributes: map[string]schema.Attribute{
+						"id": schema.StringAttribute{
+							Optional: true, Computed: true,
+							Description:   "DNS server identifier used by Lua scripts (3x-ui v3.10.0+).",
+							PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+						},
 						"address": schema.StringAttribute{
 							Required: true,
 						},
@@ -188,6 +200,9 @@ func xrayDNSSchema() schema.Schema {
 
 func expandXrayDNS(m *XrayDNSModel) map[string]any {
 	out := map[string]any{}
+	if !m.Script.IsNull() && !m.Script.IsUnknown() {
+		out["script"] = m.Script.ValueString()
+	}
 
 	if servers := expandDNSServerList(m.Server); len(servers) > 0 {
 		out["server"] = servers
@@ -238,6 +253,9 @@ func expandDNSServerList(servers []XrayDNSServer) []any {
 	out := make([]any, 0, len(servers))
 	for _, s := range servers {
 		entry := map[string]any{}
+		if !s.ID.IsNull() && !s.ID.IsUnknown() {
+			entry["id"] = s.ID.ValueString()
+		}
 		if !s.Address.IsNull() && !s.Address.IsUnknown() {
 			entry["address"] = s.Address.ValueString()
 		}
@@ -301,6 +319,10 @@ func flattenXrayDNS(data map[string]any) *XrayDNSModel {
 		UseSystemHosts:         types.BoolNull(),
 	}
 
+	if v, ok := data["script"].(string); ok {
+		m.Script = types.StringValue(v)
+	}
+
 	if v, ok := data["server"].([]any); ok {
 		m.Server = flattenDNSServerList(v)
 	}
@@ -360,6 +382,9 @@ func flattenDNSServerList(list []any) []XrayDNSServer {
 			DisableCache:  types.BoolNull(),
 			FinalQuery:    types.BoolNull(),
 		}
+		if v, ok := m["id"].(string); ok {
+			entry.ID = types.StringValue(v)
+		}
 		if v, ok := m["address"].(string); ok {
 			entry.Address = types.StringValue(v)
 		}
@@ -409,6 +434,9 @@ func flattenToStringList(list []any) types.List {
 
 func buildXrayDNSJSON(d map[string]any) any {
 	payload := map[string]any{}
+	if v, ok := d["script"].(string); ok {
+		payload["script"] = v
+	}
 
 	if v, ok := d["server"]; ok {
 		if list, ok := v.([]any); ok {
@@ -464,7 +492,7 @@ func expandDNSServers(list []any) []any {
 		}
 
 		// Check if server has any fields beyond address
-		hasExtra := false
+		_, hasExtra := m["id"].(string)
 		if v, ok := m["port"]; ok {
 			if intValue(v) != 0 {
 				hasExtra = true
@@ -499,6 +527,9 @@ func expandDNSServers(list []any) []any {
 
 		entry := map[string]any{
 			"address": address,
+		}
+		if v, ok := m["id"].(string); ok {
+			entry["id"] = v
 		}
 		if v, ok := m["port"]; ok {
 			if p := intValue(v); p != 0 {
@@ -550,6 +581,10 @@ func flattenXrayDNSToMap(data any) map[string]any {
 		return out
 	}
 
+	if v, ok := payload["script"].(string); ok {
+		out["script"] = v
+	}
+
 	if v, ok := payload["servers"].([]any); ok {
 		out["server"] = flattenDNSServers(v)
 	}
@@ -595,6 +630,9 @@ func flattenDNSServers(list []any) []any {
 			})
 		case map[string]any:
 			entry := map[string]any{}
+			if id, ok := v["id"].(string); ok {
+				entry["id"] = id
+			}
 			if addr, ok := v["address"].(string); ok {
 				entry["address"] = addr
 			}

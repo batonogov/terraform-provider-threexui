@@ -148,6 +148,7 @@ server. An omitted block is persisted from state on unrelated updates, and is
 - `tls_settings` (Block, Optional, Max: 1) - TLS client settings (used when `security = "tls"`).
   - `server_name` (String, Optional) - Server name (SNI) for the TLS handshake.
   - `fingerprint` (String, Optional) - Client fingerprint (e.g. `chrome`, `firefox`).
+  - `use_system_ca` (Bool, Optional) - Use the system CA store (3x-ui v3.10.0+). Set this for an upstream signed by a private CA installed on the panel host; Xray-core v26.10.10 otherwise uses its bundled Mozilla roots.
   - `allow_insecure` (Bool, Optional) - Whether to allow insecure TLS connections.
   - `alpn` (List of String, Optional) - ALPN list (e.g. `["h2", "http/1.1"]`).
   - `min_version` (String, Optional) - Minimum TLS version (e.g. `1.2`).

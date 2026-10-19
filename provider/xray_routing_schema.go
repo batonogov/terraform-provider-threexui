@@ -17,6 +17,7 @@ import (
 // ---------------------------------------------------------------------------
 
 type XrayRoutingModel struct {
+	Script         types.String      `tfsdk:"script"`
 	ID             types.String      `tfsdk:"id"`
 	DomainStrategy types.String      `tfsdk:"domain_strategy"`
 	DomainMatcher  types.String      `tfsdk:"domain_matcher"`
@@ -46,6 +47,11 @@ type XrayRoutingRule struct {
 func xrayRoutingSchema() schema.Schema {
 	return schema.Schema{
 		Attributes: map[string]schema.Attribute{
+			"script": schema.StringAttribute{
+				Optional: true, Computed: true,
+				Description:   "Path to a Lua script on the panel host (3x-ui v3.10.0+). Set an empty string to disable; omission preserves the prior value.",
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
 			"id": schema.StringAttribute{
 				Computed: true,
 				PlanModifiers: []planmodifier.String{
@@ -183,6 +189,9 @@ func xrayRoutingSchema() schema.Schema {
 // buildXrayRoutingJSON expects.
 func expandXrayRouting(m *XrayRoutingModel) map[string]any {
 	out := map[string]any{}
+	if !m.Script.IsNull() && !m.Script.IsUnknown() {
+		out["script"] = m.Script.ValueString()
+	}
 
 	if !m.DomainStrategy.IsNull() && !m.DomainStrategy.IsUnknown() {
 		out["domain_strategy"] = m.DomainStrategy.ValueString()
@@ -249,6 +258,10 @@ func expandXrayRouting(m *XrayRoutingModel) map[string]any {
 func flattenXrayRouting(data map[string]any) *XrayRoutingModel {
 	m := &XrayRoutingModel{
 		ID: types.StringValue("xray_routing"),
+	}
+
+	if v, ok := data["script"].(string); ok {
+		m.Script = types.StringValue(v)
 	}
 
 	if v, ok := data["domain_strategy"].(string); ok && v != "" {
@@ -331,6 +344,9 @@ func flattenXrayRouting(data map[string]any) *XrayRoutingModel {
 
 func buildXrayRoutingJSON(d map[string]any) any {
 	payload := map[string]any{}
+	if v, ok := d["script"].(string); ok {
+		payload["script"] = v
+	}
 
 	if v, ok := d["domain_strategy"].(string); ok && v != "" {
 		payload["domainStrategy"] = v
@@ -428,6 +444,10 @@ func flattenXrayRoutingToMap(data any) map[string]any {
 		}
 	default:
 		return out
+	}
+
+	if v, ok := payload["script"].(string); ok {
+		out["script"] = v
 	}
 
 	if v, ok := payload["domainStrategy"].(string); ok {

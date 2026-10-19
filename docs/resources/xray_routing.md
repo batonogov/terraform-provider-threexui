@@ -34,9 +34,13 @@ resource "threexui_xray_routing" "config" {
 
 > **Note:** The internal routing rule (`inboundTag: ["api"]` → `outboundTag: "api"`) is managed automatically by the provider and must not be included in your configuration. The provider ensures this rule is always present at index 0 on write and omits it from Terraform state on read. On 3x-ui v2.9.4+ the server also preserves this rule via `EnsureStatsRouting`; on older versions the provider injects it to keep Xray stats functional.
 
+When `script` is set, Xray uses the script instead of the configured routing rules. This field is owned by `threexui_xray_routing`, even though the panel UI displays it on the Basics tab.
+
 ## Argument Reference
 
 ### Top-level attributes
+
+- `script` (String, Optional) - Path to a Lua script on the panel host (3x-ui v3.10.0+, Xray-core v26.10.10+). The file must already exist and be readable by Xray; the provider does not upload it. Set `script = ""` to disable it; omission preserves the previous value.
 
 - `domain_strategy` (String, Optional) - Domain resolution strategy (e.g. `AsIs`, `IPIfNonMatch`, `IPOnDemand`).
 - `domain_matcher` (String, Optional) - Domain matcher type (e.g. `hybrid`, `linear`).
