@@ -546,6 +546,7 @@ Unlike AmneziaWG, the panel generates nothing here: the `certificate` / `private
 - `tls_settings` (Optional, Block) - TLS settings (used when `security = "tls"`).
   - `server_name` (Optional, String) - Server name (SNI) for the TLS handshake.
   - `fingerprint` (Optional, String) - Client fingerprint (e.g. `chrome`, `firefox`).
+  - `use_system_ca` (Optional, Boolean) - Use the system CA store for outbound TLS (shared schema, 3x-ui v3.10.0+).
   - `allow_insecure` (Optional, Boolean) - Whether to allow insecure TLS connections.
   - `alpn` (Optional, List of String) - ALPN list (e.g. `["h2", "http/1.1"]`).
   - `min_version` (Optional, String) - Minimum TLS version (e.g. `1.2`).

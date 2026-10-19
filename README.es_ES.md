@@ -97,6 +97,8 @@ resource "threexui_inbound_client" "client_a" {
 
 | Versión de 3x-ui | Estado |
 | --- | --- |
+| v3.10.2 | Probado |
+| v3.10.0 | Probado |
 | v3.9.0 | Probado |
 | v3.8.5 | Probado |
 | v3.8.0 | Probado |

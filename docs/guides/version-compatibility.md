@@ -18,6 +18,8 @@ The provider officially supports every released patch across all supported 3x-ui
 <!-- sync-versions:begin -->
 | 3x-ui version | Status | Notes |
 | --- | --- | --- |
+| v3.10.2 | Tested | Shadowsocks client hot apply, reduced node-sync writes, and vmess link-import fixes. |
+| v3.10.0 | Tested | Xray-core v26.10.10, DNS/routing Lua script paths, resolver IDs, and outbound system CA support. See limitations and upgrade notes below. |
 | v3.9.0 | Tested | Incy client customization (`subIncy*`), external-subscription User-Agent, inbound `exclude_from_sub`, weekly client renewals (`reset_weekday`); inbound updates merge instead of reverting concurrent client/enable changes; xray-core v26.9.30 with WireGuard domain-strategy and xdns finalmask migrations. |
 | v3.8.5 | Tested | Rebuilt subscription page; Xray survives a bad config (port-collision saves and enables are refused); large-fleet node sync; empty REALITY `min_client_ver` now means no minimum (xray-core v26.9.9). |
 | v3.8.0 | Tested | TUIC v5 inbounds, AmneziaWG outbounds, a Discord notification bot (10 `discord*` settings), Happ client customization (`subHapp*`), `sub_profile_mode`, xray-core v26.9.9 with one-time template migrations, and hardened installs. |
@@ -32,6 +34,19 @@ The provider officially supports every released patch across all supported 3x-ui
 <!-- sync-versions:end -->
 
 Older lines (3.2.x, 3.1.x, 3.0.x, 2.9.x and earlier) are no longer tested. The provider may still work, but compatibility is not guaranteed.
+
+## v3.10.x scope and upgrade notes
+
+The compatibility matrix tests the provider's existing resources on v3.10.0 and v3.10.2. DNS/routing `script`, DNS `server.id`, and TLS `use_system_ca` are modeled. MASQUE inbounds/outbounds, MASQUE and XDRIVE transports, and the new MTProto handshake-limit control are not yet exposed. Do not import or manage MASQUE/XDRIVE configurations with the typed inbound/outbound resources: unmodeled settings cannot round-trip and a write can remove them. The read-only `threexui_xray_config` data source can inspect the raw configuration.
+
+Before upgrading a managed panel:
+
+- Xray-core v26.10.10 uses bundled Mozilla roots for outbound TLS. Configure `stream_settings.tls_settings.use_system_ca = true` for upstream servers signed by a private CA installed on the panel host.
+- The panel migrates xdns finalmasks to `names`/`addrs` and client-side UDP hopping to the `udphop` mask. Review any raw JSON in subscription settings after the upgrade; update Terraform configuration to the migrated shape before applying it again. Typed stream settings do not expose finalmask.
+- Shadowsocks `2022-blake3-chacha20-poly1305` inbounds migrate to `2022-blake3-aes-256-gcm`. The panel also replaces invalid Shadowsocks-2022 server keys. Refresh state and update the configured method/key to match before the next apply.
+- Upgrade cluster nodes as well as the master to receive the node-side synchronization and live client-update fixes.
+
+Upstream details: [v3.10.0 release](https://github.com/MHSanaei/3x-ui/releases/tag/v3.10.0), [v3.10.2 release](https://github.com/MHSanaei/3x-ui/releases/tag/v3.10.2).
 
 ## Known issues
 
@@ -135,13 +150,13 @@ The provider communicates with whatever 3x-ui version is running on your host. T
 
 ```bash
 # Set the 3x-ui image tag
-export THREEXUI_VERSION=v3.9.0
+export THREEXUI_VERSION=v3.10.2
 
 # Start the container
 docker compose up -d
 ```
 
-In `docker-compose.yaml`, the image tag is parameterized via `${THREEXUI_VERSION:-v3.9.0}`, so omitting the variable defaults to the latest tested version.
+In `docker-compose.yaml`, the image tag is parameterized via `${THREEXUI_VERSION:-v3.10.2}`, so omitting the variable defaults to the latest tested version.
 
 For the Terraform provider itself, use the latest release from the [Terraform Registry](https://registry.terraform.io/providers/batonogov/threexui). The single provider binary supports all 3x-ui versions listed in the compatibility table above.
 

@@ -632,7 +632,11 @@ func TestDriftInboundProtocols_GoModel(t *testing.T) {
 	}
 
 	upstreamSet := toSet(upstream)
-	upstreamSkipped := map[string]bool{}
+	upstreamSkipped := map[string]bool{
+		// v3.10.0 MASQUE is not yet modeled. The compatibility matrix covers
+		// existing resources; see docs/guides/version-compatibility.md.
+		"masque": true,
+	}
 	checkMissing(t, upstream, providerHandled, upstreamSkipped,
 		"upstream model.go has protocols not handled by provider: %v")
 	checkRemoved(t, providerHandled, upstreamSet, providerExtras,
@@ -670,7 +674,11 @@ func TestDriftInboundProtocols_JS(t *testing.T) {
 	}
 
 	upstreamSet := toSet(upstream)
-	upstreamSkipped := map[string]bool{}
+	upstreamSkipped := map[string]bool{
+		// v3.10.0 MASQUE is not yet modeled. The compatibility matrix covers
+		// existing resources; see docs/guides/version-compatibility.md.
+		"masque": true,
+	}
 	checkMissing(t, upstream, providerHandled, upstreamSkipped,
 		"upstream inbound.js Protocols has entries not handled by provider: %v")
 	checkRemoved(t, providerHandled, upstreamSet, providerExtras,
@@ -708,7 +716,11 @@ func TestDriftProtocolForms(t *testing.T) {
 	}
 
 	upstreamSet := toSet(upstream)
-	upstreamSkipped := map[string]bool{}
+	upstreamSkipped := map[string]bool{
+		// v3.10.0 MASQUE is not yet modeled. The compatibility matrix covers
+		// existing resources; see docs/guides/version-compatibility.md.
+		"masque": true,
+	}
 	checkMissing(t, upstream, providerBlocks, upstreamSkipped,
 		"upstream protocol form files not handled by provider: %v")
 	checkRemoved(t, providerBlocks, upstreamSet, providerExtras,
@@ -745,7 +757,10 @@ func TestDriftStreamSettingsForms(t *testing.T) {
 	}
 
 	upstreamSet := toSet(upstream)
-	checkMissing(t, upstream, providerHandled, nil,
+	// New transports are not yet modeled; do not import/manage their inbounds
+	// or outbounds with typed resources (documented in the compatibility guide).
+	upstreamSkipped := map[string]bool{"stream_masque": true, "stream_xdrive": true}
+	checkMissing(t, upstream, providerHandled, upstreamSkipped,
 		"upstream stream form files not handled by provider: %v")
 	checkRemoved(t, providerHandled, upstreamSet, nil,
 		"provider handles stream forms not in upstream: %v")

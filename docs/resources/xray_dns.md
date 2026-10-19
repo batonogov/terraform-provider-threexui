@@ -46,6 +46,8 @@ resource "threexui_xray_dns" "config" {
 
 ### Top-level attributes
 
+- `script` (String, Optional) - Path to a Lua script on the panel host (3x-ui v3.10.0+, Xray-core v26.10.10+). The file must already exist and be readable by Xray; the provider does not upload it. Set `script = ""` to disable it; omission preserves the previous value.
+
 - `query_strategy` (String, Optional) - DNS query strategy (e.g. `UseIP`, `UseIPv4`, `UseIPv6`).
 - `tag` (String, Optional) - DNS outbound tag.
 - `disable_cache` (Bool, Optional) - Disable DNS cache.
@@ -57,6 +59,8 @@ resource "threexui_xray_dns" "config" {
 - `hosts` (Map of String, Optional) - Static DNS host mappings.
 
 ### server (Block, Optional, List)
+
+- `id` (String, Optional) - Resolver identifier used by Lua scripts (3x-ui v3.10.0+). An ID forces object encoding even when `address` is the only other field. Include it in each configured server that needs it: server blocks are authoritative on updates.
 
 - `address` (String, Required) - DNS server address (e.g. `8.8.8.8`, `https+local://1.1.1.1/dns-query`, `localhost`).
 - `port` (Int, Optional) - DNS server port.

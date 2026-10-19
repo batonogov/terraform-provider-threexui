@@ -57,6 +57,7 @@ type InboundRealitySettingsModel struct {
 }
 
 type InboundTLSSettingsModel struct {
+	UseSystemCA   types.Bool            `tfsdk:"use_system_ca"`
 	ServerName    types.String          `tfsdk:"server_name"`
 	Fingerprint   types.String          `tfsdk:"fingerprint"`
 	AllowInsecure types.Bool            `tfsdk:"allow_insecure"`
@@ -349,6 +350,11 @@ func inboundStreamSettingsBlockSchema() schema.SingleNestedBlock {
 						PlanModifiers: []planmodifier.String{
 							stringplanmodifier.UseStateForUnknown(),
 						},
+					},
+					"use_system_ca": schema.BoolAttribute{
+						Optional: true, Computed: true,
+						Description:   "Use the system CA store for outbound TLS (3x-ui v3.10.0+); needed for private CAs.",
+						PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
 					},
 					"allow_insecure": schema.BoolAttribute{
 						Optional: true, Computed: true,
@@ -898,6 +904,9 @@ func expandTLSSettingsFromModel(m *InboundTLSSettingsModel) map[string]any {
 	if !m.Fingerprint.IsNull() && !m.Fingerprint.IsUnknown() {
 		out["fingerprint"] = m.Fingerprint.ValueString()
 	}
+	if !m.UseSystemCA.IsNull() && !m.UseSystemCA.IsUnknown() {
+		out["use_system_ca"] = m.UseSystemCA.ValueBool()
+	}
 	if !m.AllowInsecure.IsNull() && !m.AllowInsecure.IsUnknown() {
 		out["allow_insecure"] = m.AllowInsecure.ValueBool()
 	}
@@ -1345,6 +1354,9 @@ func flattenTLSSettingsToModel(data map[string]any) *InboundTLSSettingsModel {
 		m.Fingerprint = types.StringValue(v)
 	} else {
 		m.Fingerprint = types.StringNull()
+	}
+	if v, ok := data["use_system_ca"].(bool); ok {
+		m.UseSystemCA = types.BoolValue(v)
 	}
 	if v, ok := data["allow_insecure"].(bool); ok {
 		m.AllowInsecure = types.BoolValue(v)
