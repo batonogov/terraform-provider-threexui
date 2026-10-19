@@ -1,6 +1,6 @@
 module github.com/batonogov/terraform-provider-threexui
 
-go 1.26.6
+go 1.26.9
 
 require (
 	github.com/hashicorp/go-version v1.9.0
@@ -51,7 +51,7 @@ require (
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/zclconf/go-cty v1.18.1 // indirect
 	golang.org/x/crypto v0.57.0 // indirect
-	golang.org/x/net v0.59.0 // indirect
+	golang.org/x/net v0.60.0 // indirect
 	golang.org/x/sync v0.23.0 // indirect
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
