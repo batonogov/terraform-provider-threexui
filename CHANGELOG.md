@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.28.0](https://github.com/batonogov/terraform-provider-threexui/compare/v3.27.0...v3.28.0) (2026-10-19)
+
+
+### Features
+
+* support 3x-ui v3.10.x compatibility ([#473](https://github.com/batonogov/terraform-provider-threexui/issues/473)) ([c6888c3](https://github.com/batonogov/terraform-provider-threexui/commit/c6888c3475459e8386ea897f47773e22b1701261))
+
 ## [3.27.0](https://github.com/batonogov/terraform-provider-threexui/compare/v3.26.0...v3.27.0) (2026-10-06)
 
 
