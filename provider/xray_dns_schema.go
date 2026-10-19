@@ -58,7 +58,6 @@ func xrayDNSSchema() schema.Schema {
 				Description:   "Path to a Lua script on the panel host (3x-ui v3.10.0+). Set an empty string to disable; omission preserves the prior value.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
-
 			"id": schema.StringAttribute{
 				Computed: true,
 				PlanModifiers: []planmodifier.String{
@@ -131,7 +130,6 @@ func xrayDNSSchema() schema.Schema {
 							Description:   "DNS server identifier used by Lua scripts (3x-ui v3.10.0+).",
 							PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 						},
-
 						"address": schema.StringAttribute{
 							Required: true,
 						},

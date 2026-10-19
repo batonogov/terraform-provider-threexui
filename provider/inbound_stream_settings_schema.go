@@ -398,6 +398,7 @@ func inboundStreamSettingsBlockSchema() schema.SingleNestedBlock {
 						Optional: true, Computed: true,
 						PlanModifiers: []planmodifier.List{
 							listplanmodifier.UseStateForUnknown(),
+							tlsCertificatesNullOnCreate{},
 						},
 						NestedObject: schema.NestedAttributeObject{
 							Attributes: map[string]schema.Attribute{
