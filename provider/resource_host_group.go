@@ -2,6 +2,9 @@ package provider
 
 import (
 	"context"
+	"fmt"
+	"reflect"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
@@ -10,6 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
@@ -38,6 +42,8 @@ type HostGroup struct {
 	Port                   int      `json:"port"`
 	Security               string   `json:"security"`
 	Sni                    string   `json:"sni"`
+	Snis                   []string `json:"snis"`
+	SniSharedRandom        bool     `json:"sniSharedRandom"`
 	HostHeader             string   `json:"hostHeader"`
 	Path                   string   `json:"path"`
 	Alpn                   []string `json:"alpn"`
@@ -58,6 +64,7 @@ type HostGroup struct {
 	MihomoIpVersion        string   `json:"mihomoIpVersion"`
 	MihomoX25519           bool     `json:"mihomoX25519"`
 	ShuffleHost            bool     `json:"shuffleHost"`
+	RandomCount            int      `json:"randomCount"`
 }
 
 // ---------------------------------------------------------------------------
@@ -82,6 +89,8 @@ type HostGroupResourceModel struct {
 	Port                   types.Int64  `tfsdk:"port"`
 	Security               types.String `tfsdk:"security"`
 	Sni                    types.String `tfsdk:"sni"`
+	Snis                   types.List   `tfsdk:"snis"` // list of string
+	SniSharedRandom        types.Bool   `tfsdk:"sni_shared_random"`
 	HostHeader             types.String `tfsdk:"host_header"`
 	Path                   types.String `tfsdk:"path"`
 	Alpn                   types.List   `tfsdk:"alpn"` // list of string
@@ -102,6 +111,7 @@ type HostGroupResourceModel struct {
 	MihomoIpVersion        types.String `tfsdk:"mihomo_ip_version"`
 	MihomoX25519           types.Bool   `tfsdk:"mihomo_x25519"`
 	ShuffleHost            types.Bool   `tfsdk:"shuffle_host"`
+	RandomCount            types.Int64  `tfsdk:"random_count"`
 }
 
 // ---------------------------------------------------------------------------
@@ -124,6 +134,47 @@ func (r *HostGroupResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 	resp.Schema = hostGroupResourceSchema()
 }
 
+func (r *HostGroupResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	if req.Plan.Raw.IsNull() {
+		return
+	}
+	var plan, config HostGroupResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if !config.Sni.IsNull() {
+		switch {
+		case !config.Snis.IsNull() && !config.Snis.IsUnknown():
+			if !hostGroupPoolHasUnknown(config.Snis) {
+				configured := stringListToSlice(ctx, config.Snis)
+				canonical := canonicalHostSniPool(config.Sni.ValueString(), configured)
+				if !reflect.DeepEqual(canonical, configured) {
+					resp.Diagnostics.AddError("Invalid SNI pool", "The configured sni and snis are not in the panel's canonical form: the primary SNI must be first and entries must be unique.")
+				}
+			}
+		case config.Snis.IsNull() && !plan.Snis.IsNull() && !plan.Snis.IsUnknown() && !hostGroupPoolHasUnknown(plan.Snis):
+			plan.Snis = sliceToStringList(canonicalHostSniPool(config.Sni.ValueString(), stringListToSlice(ctx, plan.Snis)))
+		}
+	} else if !config.Snis.IsNull() && !config.Snis.IsUnknown() {
+		if hostGroupPoolHasUnknown(config.Snis) {
+			plan.Sni = types.StringUnknown()
+		} else if snis := stringListToSlice(ctx, config.Snis); len(snis) > 0 {
+			plan.Sni = types.StringValue(snis[0])
+		} else {
+			plan.Sni = types.StringNull()
+		}
+	}
+
+	if !config.SniSharedRandom.IsNull() && !config.SniSharedRandom.IsUnknown() && config.SniSharedRandom.ValueBool() &&
+		!plan.Snis.IsNull() && !plan.Snis.IsUnknown() && !hostGroupPoolHasUnknown(plan.Snis) && len(plan.Snis.Elements()) < 2 {
+		resp.Diagnostics.AddError("Invalid shared SNI randomization", "sni_shared_random requires at least two effective SNIs; the panel otherwise stores false.")
+	}
+	resp.Diagnostics.Append(resp.Plan.Set(ctx, &plan)...)
+}
+
 func (r *HostGroupResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	if req.ProviderData == nil {
 		return
@@ -142,8 +193,18 @@ func (r *HostGroupResource) Create(ctx context.Context, req resource.CreateReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	var config HostGroupResourceModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
+	if err := validateHostGroupPlanForApply(ctx, &plan, &config); err != nil {
+		resp.Diagnostics.AddError("Invalid host group configuration", err.Error())
+		return
+	}
 	hg := hostGroupFromModel(ctx, &plan)
+	normalizeHostGroupSniPrimary(ctx, &plan, &config, hg)
 
 	created, err := r.client.CreateHostGroup(ctx, hg)
 	if err != nil {
@@ -214,6 +275,11 @@ func (r *HostGroupResource) Update(ctx context.Context, req resource.UpdateReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	var config HostGroupResourceModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	groupID := state.GroupID.ValueString()
 	if groupID == "" {
@@ -224,7 +290,12 @@ func (r *HostGroupResource) Update(ctx context.Context, req resource.UpdateReque
 		return
 	}
 
+	if err := validateHostGroupPlanForApply(ctx, &plan, &config); err != nil {
+		resp.Diagnostics.AddError("Invalid host group configuration", err.Error())
+		return
+	}
 	hg := hostGroupFromModel(ctx, &plan)
+	normalizeHostGroupSniPrimary(ctx, &plan, &config, hg)
 	hg.GroupId = groupID
 
 	if err := r.client.UpdateHostGroup(ctx, groupID, hg); err != nil {
@@ -294,6 +365,7 @@ func hostGroupFromModel(ctx context.Context, m *HostGroupResourceModel) *HostGro
 		Port:                   int(m.Port.ValueInt64()),
 		Security:               m.Security.ValueString(),
 		Sni:                    m.Sni.ValueString(),
+		SniSharedRandom:        m.SniSharedRandom.ValueBool(),
 		HostHeader:             m.HostHeader.ValueString(),
 		Path:                   m.Path.ValueString(),
 		Fingerprint:            m.Fingerprint.ValueString(),
@@ -310,6 +382,7 @@ func hostGroupFromModel(ctx context.Context, m *HostGroupResourceModel) *HostGro
 		MihomoIpVersion:        m.MihomoIpVersion.ValueString(),
 		MihomoX25519:           m.MihomoX25519.ValueBool(),
 		ShuffleHost:            m.ShuffleHost.ValueBool(),
+		RandomCount:            int(m.RandomCount.ValueInt64()),
 	}
 	if !m.IsDisabled.IsNull() {
 		hg.IsDisabled = m.IsDisabled.ValueBool()
@@ -319,12 +392,108 @@ func hostGroupFromModel(ctx context.Context, m *HostGroupResourceModel) *HostGro
 	}
 	hg.InboundIds = int64ListToInts(ctx, m.InboundIDs)
 	hg.Hosts = stringListToSlice(ctx, m.Hosts)
+	hg.Snis = stringListToSlice(ctx, m.Snis)
 	hg.Tags = stringListToSlice(ctx, m.Tags)
 	hg.Alpn = stringListToSlice(ctx, m.Alpn)
 	hg.PinnedPeerCertSha256 = stringListToSlice(ctx, m.PinnedPeerCertSha256)
 	hg.ExcludeFromSubTypes = stringListToSlice(ctx, m.ExcludeFromSubTypes)
 	hg.NodeGuids = stringListToSlice(ctx, m.NodeGuids)
 	return hg
+}
+
+func hostGroupPoolHasUnknown(list types.List) bool {
+	if list.IsUnknown() {
+		return true
+	}
+	for _, element := range list.Elements() {
+		if element.IsUnknown() {
+			return true
+		}
+	}
+	return false
+}
+
+func canonicalHostSniPool(primary string, pool []string) []string {
+	seen := make(map[string]bool, len(pool))
+	snis := make([]string, 0, len(pool)+1)
+	for _, value := range pool {
+		value = strings.TrimSpace(value)
+		if value != "" && !seen[value] {
+			seen[value] = true
+			snis = append(snis, value)
+		}
+	}
+	primary = strings.TrimSpace(primary)
+	if primary == "" || (len(snis) > 0 && snis[0] == primary) {
+		return snis
+	}
+	if len(snis) <= 1 {
+		return []string{primary}
+	}
+	out := []string{primary}
+	for _, value := range snis {
+		if value != primary {
+			out = append(out, value)
+		}
+	}
+	return out
+}
+
+func validateHostGroupPlanForApply(ctx context.Context, plan, config *HostGroupResourceModel) error {
+	if plan == nil || config == nil {
+		return nil
+	}
+	if !config.Sni.IsNull() && !plan.Sni.IsUnknown() && !plan.Snis.IsNull() && !hostGroupPoolHasUnknown(plan.Snis) {
+		planned := stringListToSlice(ctx, plan.Snis)
+		if canonical := canonicalHostSniPool(plan.Sni.ValueString(), planned); !reflect.DeepEqual(canonical, planned) {
+			return fmt.Errorf("configured sni and snis are not in the panel's canonical form")
+		}
+	}
+	if plan.SniSharedRandom.ValueBool() && !plan.Snis.IsNull() && !hostGroupPoolHasUnknown(plan.Snis) && len(plan.Snis.Elements()) < 2 {
+		return fmt.Errorf("sni_shared_random requires at least two effective SNIs")
+	}
+	return nil
+}
+
+func normalizeHostGroupSniPrimary(ctx context.Context, plan, config *HostGroupResourceModel, hg *HostGroup) {
+	if plan == nil || config == nil || !config.Sni.IsNull() || plan.Snis.IsNull() || hostGroupPoolHasUnknown(plan.Snis) || hg == nil {
+		return
+	}
+	snis := stringListToSlice(ctx, plan.Snis)
+	if len(snis) > 0 {
+		hg.Sni = snis[0]
+	} else {
+		hg.Sni = ""
+	}
+}
+
+type hostGroupSnisValidator struct{}
+
+func (hostGroupSnisValidator) Description(_ context.Context) string {
+	return "snis must contain unique, non-empty, trimmed values"
+}
+
+func (v hostGroupSnisValidator) MarkdownDescription(ctx context.Context) string {
+	return v.Description(ctx)
+}
+
+func (hostGroupSnisValidator) ValidateList(_ context.Context, req validator.ListRequest, resp *validator.ListResponse) {
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
+	}
+	seen := make(map[string]bool, len(req.ConfigValue.Elements()))
+	for _, element := range req.ConfigValue.Elements() {
+		sni, ok := element.(types.String)
+		if !ok || sni.IsNull() || sni.IsUnknown() {
+			continue
+		}
+		value := sni.ValueString()
+		if value == "" || strings.TrimSpace(value) != value || seen[value] {
+			resp.Diagnostics.AddError("Invalid SNI pool", "Each SNI must be non-empty, trimmed, and unique.")
+			return
+		}
+		seen[value] = true
+	}
 }
 
 // flattenHostGroupToModel copies a HostGroup into the model. Managed attributes
@@ -355,6 +524,7 @@ func flattenHostGroupToModel(hg *HostGroup, m *HostGroupResourceModel) {
 	} else {
 		m.Sni = types.StringNull()
 	}
+	m.SniSharedRandom = types.BoolValue(hg.SniSharedRandom)
 	if hg.HostHeader != "" {
 		m.HostHeader = types.StringValue(hg.HostHeader)
 	} else {
@@ -415,9 +585,15 @@ func flattenHostGroupToModel(hg *HostGroup, m *HostGroupResourceModel) {
 	}
 	m.MihomoX25519 = types.BoolValue(hg.MihomoX25519)
 	m.ShuffleHost = types.BoolValue(hg.ShuffleHost)
+	if hg.RandomCount > 0 {
+		m.RandomCount = types.Int64Value(int64(hg.RandomCount))
+	} else {
+		m.RandomCount = types.Int64Null()
+	}
 
 	m.InboundIDs = intsToInt64List(hg.InboundIds)
 	m.Hosts = sliceToStringList(hg.Hosts)
+	m.Snis = sliceToStringList(hg.Snis)
 	m.Tags = sliceToStringList(hg.Tags)
 	m.Alpn = sliceToStringList(hg.Alpn)
 	m.PinnedPeerCertSha256 = sliceToStringList(hg.PinnedPeerCertSha256)
@@ -571,6 +747,22 @@ func hostGroupResourceSchema() schema.Schema {
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
+			"snis": schema.ListAttribute{
+				Optional:    true,
+				Computed:    true,
+				ElementType: types.StringType,
+				Description: "Pool of unique, trimmed SNIs for generated links. Requires 3x-ui v3.11.0+; [] clears the pool.",
+				Validators:  []validator.List{hostGroupSnisValidator{}},
+				PlanModifiers: []planmodifier.List{
+					listplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"sni_shared_random": schema.BoolAttribute{
+				Optional:    true,
+				Computed:    true,
+				Default:     booldefault.StaticBool(false),
+				Description: "Pick one SNI per subscription fetch for the whole host group instead of per generated config. Requires at least two effective SNIs and 3x-ui v3.11.0+.",
+			},
 			"host_header": schema.StringAttribute{
 				Optional: true, Computed: true,
 				PlanModifiers: []planmodifier.String{
@@ -670,6 +862,17 @@ func hostGroupResourceSchema() schema.Schema {
 				Optional: true, Computed: true,
 				PlanModifiers: []planmodifier.Bool{
 					boolplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"random_count": schema.Int64Attribute{
+				Optional:    true,
+				Computed:    true,
+				Description: "Number of unique random addresses emitted for a CIDR host (1-100). Requires 3x-ui v3.11.0+; older panels read it back as null.",
+				Validators: []validator.Int64{
+					int64validator.Between(1, 100),
+				},
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
 				},
 			},
 			"hosts": schema.ListAttribute{

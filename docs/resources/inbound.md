@@ -300,6 +300,7 @@ Settings for mixed (HTTP+SOCKS) proxy protocol.
   - `pre_shared_key` (Optional, String, Sensitive)
   - `allowed_ips` (Optional, List of String)
   - `keep_alive` (Optional, Number)
+  - `client_host_rule_ids` (Optional, List of Number) - Host rule IDs bound to this client (3x-ui v3.11.0+). Omit to preserve bindings; set `[]` to clear them.
   - `email` (Optional, String) - the panel requires a non-empty unique email (keys traffic counters on it); set it even though it is Optional in the schema.
   - `limit_ip` (Optional, Number)
   - `total_gb` (Optional, Number) - traffic quota in bytes (the field name mirrors the 3x-ui API).
@@ -356,6 +357,7 @@ The provider creates an AmneziaWG inbound in two steps: first without this block
 - `ipv6_subnet` (Optional+Computed, String) - IPv6 tunnel prefix, e.g. `fd00:8:1::/64`. Required when `ipv6_enabled` is true.
 - `ipv6_external_interface` (Optional+Computed, String) - Host NIC for IPv6 egress. Omit to reuse the IPv4 interface.
 - `route_through_xray` (Optional+Computed, Boolean) - Vestigial upstream: the embedded relay is always on and nothing reads the flag. Round-tripped so the blob is not altered on save.
+- `kernel_mode` (Optional+Computed, Boolean) - Use the Linux AmneziaWG kernel datapath (3x-ui v3.11.0+). Kernel mode is NAT-only and does not support Xray routing, sniffing, IPv6, or peer port forwarding; the panel checks kernel-module availability on the host.
 - `jc` (Optional+Computed, Number) - Junk packet count.
 - `jmin` (Optional+Computed, Number) - Minimum junk packet size. Must not exceed `jmax`.
 - `jmax` (Optional+Computed, Number) - Maximum junk packet size.
@@ -393,7 +395,9 @@ The provider creates an AmneziaWG inbound in two steps: first without this block
 - `public_key` (**Required**, String) - Peer public key (base64). The panel rejects an AmneziaWG peer without one (`wireguard client requires a key`) and does not derive it from `private_key` on the inbound path — key generation lives only on the `/panel/api/clients` endpoints, which do not own these peers.
 - `pre_shared_key` (Optional+Computed, String, Sensitive) - Optional pre-shared key.
 - `allowed_ips` (Optional+Computed, List of String) - Peer tunnel addresses, e.g. `["10.9.1.2/32"]`. Set at least one: address allocation happens on the `/panel/api/clients` endpoints, which do not own these peers, so a peer declared here without addresses is saved unroutable. Normalised server-side — a bare address becomes `/32` and duplicates are dropped.
-- `keep_alive` (Optional+Computed, Number) - Persistent keepalive in seconds, at least 1. Omit it to disable keepalive — the panel strips a zero, so `0` cannot round-trip.
+- `keep_alive` (Optional+Computed, Number) - Persistent keepalive in seconds, 0-65535. On 3x-ui v3.11.0+, `0` disables keepalive and clears a previous range; older panels strip zero, so use a positive value there.
+- `keep_alive_range` (Optional, String) - Randomised persistent keepalive range in canonical `min-max` seconds form, e.g. `15-25` (3x-ui v3.11.0+). Bounds must be ordered integers from 0 to 65535. Mutually exclusive with `keep_alive`; set `keep_alive = 0` to disable a previous range.
+- `client_host_rule_ids` (Optional+Computed, List of Number) - Host rule IDs bound to this peer (3x-ui v3.11.0+). Omit to preserve bindings; set `[]` to clear them.
 - `forwarded_ports` (Optional+Computed, String) - Ports DNAT-forwarded to this peer, e.g. `80,443,8000-8100`. Expands to at most 100 ports. The panel rejects a spec colliding with the panel's own port, any enabled inbound's port, or this inbound's SOCKS relay port (65100 + inbound id); malformed tokens are dropped silently.
 - `enable` (Optional+Computed, Boolean) - Whether the peer is enabled.
 - `limit_ip` (Optional+Computed, Number) - Concurrent IP limit (0 = unlimited).
@@ -470,6 +474,7 @@ Unlike AmneziaWG, the panel generates nothing here: the `certificate` / `private
 - `sub_id` (Optional, String) - Subscription ID.
 - `comment` (Optional, String) - Free-form comment.
 - `reset` (Optional, Number) - Traffic reset cycle in days (0 = none).
+- `client_host_rule_ids` (Optional, List of Number) - Host rule IDs bound to this user (3x-ui v3.11.0+). Omit to preserve bindings; set `[]` to clear them.
 - `reset_day` / `reset_max` / `traffic_reset` / `traffic_reset_day` (Optional) - Renewal and reset-cycle bookkeeping, modelled so an unrelated apply does not zero them (the inbound rewrites `clients[]` wholesale).
 - `created_at` / `updated_at` (Optional, Number) - Panel-managed row timestamps.
 

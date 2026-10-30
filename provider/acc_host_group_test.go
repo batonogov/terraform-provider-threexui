@@ -199,3 +199,87 @@ resource "threexui_host_group" "test" {
 		},
 	})
 }
+
+func TestAccHostGroupV311(t *testing.T) {
+	requireMinVersion(t, "v3.11.0")
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories(),
+		CheckDestroy:             testAccCheckHostGroupDestroyed,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccProviderConfig() + testAccHostGroupInboundConfig() + `
+resource "threexui_host_group" "test" {
+  remark            = "acc-host-group-v311"
+  hosts             = ["192.0.2.0/24"]
+  security          = "tls"
+  snis              = ["one.example.com", "two.example.com"]
+  sni_shared_random = true
+  random_count      = 7
+  inbound_ids       = [threexui_inbound.hg.id]
+}
+`,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("threexui_host_group.test", "snis.#", "2"),
+					resource.TestCheckResourceAttr("threexui_host_group.test", "snis.1", "two.example.com"),
+					resource.TestCheckResourceAttr("threexui_host_group.test", "sni_shared_random", "true"),
+					resource.TestCheckResourceAttr("threexui_host_group.test", "random_count", "7"),
+				),
+			},
+			{
+				Config: testAccProviderConfig() + testAccHostGroupInboundConfig() + `
+resource "threexui_host_group" "test" {
+  remark            = "acc-host-group-v311"
+  hosts             = ["192.0.2.0/24"]
+  security          = "tls"
+  snis              = ["three.example.com"]
+  sni_shared_random = false
+  random_count      = 3
+  inbound_ids       = [threexui_inbound.hg.id]
+}
+`,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("threexui_host_group.test", "snis.#", "1"),
+					resource.TestCheckResourceAttr("threexui_host_group.test", "snis.0", "three.example.com"),
+					resource.TestCheckResourceAttr("threexui_host_group.test", "sni_shared_random", "false"),
+					resource.TestCheckResourceAttr("threexui_host_group.test", "random_count", "3"),
+				),
+			},
+			{
+				Config: testAccProviderConfig() + testAccHostGroupInboundConfig() + `
+resource "threexui_host_group" "test" {
+  remark       = "acc-host-group-v311"
+  hosts        = ["192.0.2.0/24"]
+  security     = "tls"
+  snis         = []
+  random_count = 3
+  inbound_ids  = [threexui_inbound.hg.id]
+}
+`,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("threexui_host_group.test", "snis.#", "0"),
+					resource.TestCheckResourceAttr("threexui_host_group.test", "sni_shared_random", "false"),
+					resource.TestCheckNoResourceAttr("threexui_host_group.test", "sni"),
+				),
+			},
+			{
+				Config: testAccProviderConfig() + testAccHostGroupInboundConfig() + `
+resource "threexui_host_group" "test" {
+  remark       = "acc-host-group-v311"
+  hosts        = ["192.0.2.0/24"]
+  security     = "tls"
+  sni          = "solo.example.com"
+  random_count = 3
+  inbound_ids  = [threexui_inbound.hg.id]
+}
+`,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("threexui_host_group.test", "snis.#", "1"),
+					resource.TestCheckResourceAttr("threexui_host_group.test", "snis.0", "solo.example.com"),
+					resource.TestCheckResourceAttr("threexui_host_group.test", "sni", "solo.example.com"),
+				),
+			},
+		},
+	})
+}

@@ -27,7 +27,7 @@ tasks:
     vars:
       TERRAFORM_PATH:
         sh: which terraform
-      THREEXUI_VERSION: '{{.THREEXUI_VERSION | default "v3.10.2"}}'
+      THREEXUI_VERSION: '{{.THREEXUI_VERSION | default "v3.11.0"}}'
     cmds:
       - docker compose down -v 2>/dev/null || true
       - defer: docker compose down
@@ -38,6 +38,7 @@ tasks:
           docker compose logs 3xui > .pi/artifacts/3xui-container.log 2>&1
           {{end}}
       - docker compose up --detach --wait --quiet-pull
+      - task: _set-test-credentials
       - task: _wait-for-xray
       - task: _warm-xray-version-cache
       - >-
@@ -56,7 +57,7 @@ tasks:
     vars:
       TERRAFORM_PATH:
         sh: which terraform
-      THREEXUI_VERSION: '{{.THREEXUI_VERSION | default "v3.10.2"}}'
+      THREEXUI_VERSION: '{{.THREEXUI_VERSION | default "v3.11.0"}}'
     cmds:
       - echo "Running tests against 3x-ui {{.THREEXUI_VERSION}} at http://localhost:2053"
       - docker compose down -v 2>/dev/null || true
@@ -68,6 +69,7 @@ tasks:
           docker compose logs 3xui > .pi/artifacts/3xui-container.log 2>&1
           {{end}}
       - docker compose up --detach --wait --quiet-pull
+      - task: _set-test-credentials
       - task: _wait-for-xray
       - task: _warm-xray-version-cache
       - >-
@@ -86,7 +88,7 @@ tasks:
     vars:
       TERRAFORM_PATH:
         sh: which terraform
-      THREEXUI_VERSION: '{{.THREEXUI_VERSION | default "v3.10.2"}}'
+      THREEXUI_VERSION: '{{.THREEXUI_VERSION | default "v3.11.0"}}'
     cmds:
       - docker compose down -v 2>/dev/null || true
       - defer: docker compose --profile postgres down -v
@@ -97,6 +99,7 @@ tasks:
           docker compose --profile postgres logs > .pi/artifacts/3xui-container.log 2>&1
           {{end}}
       - XUI_DB_TYPE=postgres XUI_DB_DSN=postgres://xui:xui@postgres:5432/xui?sslmode=disable docker compose --profile postgres up --detach --wait --quiet-pull
+      - task: _set-test-credentials
       - task: _wait-for-xray
       - task: _warm-xray-version-cache
       - >-
@@ -109,6 +112,14 @@ tasks:
         THREEXUI_PASSWORD=admin
         THREEXUI_VERSION={{.THREEXUI_VERSION}}
         go test ./provider -run TestAcc -count=1 -timeout 900s -v
+
+  _set-test-credentials:
+    desc: Установить фиксированные credentials для acceptance-тестов (внутренняя задача)
+    silent: true
+    cmds:
+      # Since v3.11.0 a fresh panel generates random first-user credentials.
+      # Keep the established admin/admin test contract on every supported version.
+      - docker compose exec -T 3xui /app/x-ui setting -username admin -password admin >/dev/null
 
   _wait-for-xray:
     desc: Дождаться готовности xray-подсистемы внутри 3x-ui (внутренняя задача)

@@ -167,6 +167,9 @@ check_readme() {
 # ---------------------------------------------------------------------------
 get_version_guide_note() {
   case "$1" in
+    v3.11.0) echo 'Kernel AmneziaWG and ranged client keepalive, per-client host bindings, SNI pools, host ordering, and Xray-core v26.10.21; fresh panels generate random first-user credentials.' ;;
+    v3.10.2) echo 'Patch release on the v3.10.x API surface; review the v3.10.x template and protocol migrations before upgrading.' ;;
+    v3.10.0) echo 'DNS/routing Lua scripts, DNS server IDs, private-CA outbound TLS, and xray-core v26.10.10 template migrations.' ;;
     v3.9.0) echo 'Incy client customization (`subIncy*`), external-subscription User-Agent, inbound `exclude_from_sub`, weekly client renewals (`reset_weekday`); inbound updates merge instead of reverting concurrent client/enable changes; xray-core v26.9.30 with WireGuard domain-strategy and xdns finalmask migrations.' ;;
     v3.8.5) echo 'Rebuilt subscription page; Xray survives a bad config (port-collision saves and enables are refused); large-fleet node sync; empty REALITY `min_client_ver` now means no minimum (xray-core v26.9.9).' ;;
     v3.8.0) echo 'TUIC v5 inbounds, AmneziaWG outbounds, a Discord notification bot (10 `discord*` settings), Happ client customization (`subHapp*`), `sub_profile_mode`, xray-core v26.9.9 with one-time template migrations, and hardened installs.' ;;

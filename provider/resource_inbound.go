@@ -736,7 +736,7 @@ func init() {
 	collect := func(protocol string, block schema.ListNestedBlock) {
 		attrs := make(map[string]attr.Type, len(block.NestedObject.Attributes))
 		for name, a := range block.NestedObject.Attributes {
-			if a.IsRequired() {
+			if !a.IsComputed() {
 				continue
 			}
 			attrs[name] = a.GetType()
@@ -905,7 +905,23 @@ func diffInboundOwnedPeers(planClients, observedClients []any) inboundPeerDiff {
 		if subID, _ := planMap["subId"].(string); subID == "" {
 			delete(planMap, "subId")
 		}
-		if !isSubset(planMap, peerMapWithoutVolatile(stored)) {
+		storedMap := peerMapWithoutVolatile(stored)
+		if keepAlive, ok := planMap["keepAlive"].(float64); ok && keepAlive == 0 {
+			if _, storedHasKeepAlive := storedMap["keepAlive"]; !storedHasKeepAlive {
+				delete(planMap, "keepAlive")
+			}
+		}
+		clearHostRuleIDs := false
+		if ids, ok := planMap["clientHostRuleIds"].([]any); ok && len(ids) == 0 {
+			storedIDs, storedHasIDs := storedMap["clientHostRuleIds"].([]any)
+			switch {
+			case !storedHasIDs:
+				delete(planMap, "clientHostRuleIds")
+			case len(storedIDs) > 0:
+				clearHostRuleIDs = true
+			}
+		}
+		if clearHostRuleIDs || !isSubset(planMap, storedMap) {
 			diff.update = append(diff.update, m)
 		}
 	}
@@ -1306,6 +1322,19 @@ func (r *InboundResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 		block = "wireguard_settings"
 	case "tuic":
 		block = "tuic_settings"
+	}
+
+	if protocol == "amneziawg" && planModel.AmneziawgSettings != nil {
+		for i, peer := range planModel.AmneziawgSettings.Clients {
+			p := path.Root(block).AtName("clients").AtListIndex(i).AtName("keep_alive")
+			switch {
+			case !peer.KeepAliveRange.IsNull() && !peer.KeepAliveRange.IsUnknown():
+				resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, p, types.Int64Null())...)
+			case peer.KeepAliveRange.IsNull() && peer.KeepAlive.IsNull() && stateModel.AmneziawgSettings != nil && i < len(stateModel.AmneziawgSettings.Clients) &&
+				!stateModel.AmneziawgSettings.Clients[i].KeepAliveRange.IsNull() && !stateModel.AmneziawgSettings.Clients[i].KeepAliveRange.IsUnknown():
+				resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, p, types.Int64Value(0))...)
+			}
+		}
 	}
 
 	// Peers edited through the client endpoints get panel-rewritten values

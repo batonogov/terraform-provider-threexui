@@ -97,6 +97,7 @@ resource "threexui_inbound_client" "client_a" {
 
 | Versión de 3x-ui | Estado |
 | --- | --- |
+| v3.11.0 | Probado |
 | v3.10.2 | Probado |
 | v3.10.0 | Probado |
 | v3.9.0 | Probado |
@@ -211,6 +212,9 @@ task test         # Unitarios + aceptación
 ```bash
 # Levantar 3x-ui en localhost:2053
 docker compose up -d
+
+# Define las credenciales locales (v3.11.0+ genera credenciales aleatorias)
+docker compose exec -T 3xui /app/x-ui setting -username admin -password admin
 
 # Login: admin / admin
 

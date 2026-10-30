@@ -832,6 +832,8 @@ func TestDriftClientFields(t *testing.T) {
 		"trafficReset": true, "trafficResetDay": true,
 		// v3.9.0 weekly calendar renewals (reset_weekday on threexui_inbound_client).
 		"resetWeekday": true,
+		// v3.11.0 per-client host-rule bindings.
+		"clientHostRuleIds": true,
 	}
 
 	dir := latestSnapshotDir(t)
@@ -991,6 +993,8 @@ func TestDriftAllSettingFields(t *testing.T) {
 		"subIncyNoisesType": true, "subIncyNoisesPacket": true,
 		"subIncyNoisesDelay": true, "subIncyResolveEnable": true,
 		"subIncyResolveDnsDomain": true, "subIncyResolveDnsIp": true,
+		// v3.11.0 node alert threshold and subscription additions.
+		"nodeDownThreshold": true, "subHostSortMode": true, "subClashRemoteDNS": true,
 	}
 
 	// Fields intentionally not managed by the provider.

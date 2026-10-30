@@ -133,32 +133,33 @@ type Node struct {
 	OutboundTag         string   `json:"outboundTag"`
 
 	// Observed identity / heartbeat state (read-only).
-	Guid          string  `json:"guid"`
-	Status        string  `json:"status"`
-	LastHeartbeat int64   `json:"lastHeartbeat"`
-	LatencyMs     int     `json:"latencyMs"`
-	XrayVersion   string  `json:"xrayVersion"`
-	PanelVersion  string  `json:"panelVersion"`
-	CpuPct        float64 `json:"cpuPct"`
-	MemPct        float64 `json:"memPct"`
-	UptimeSecs    uint64  `json:"uptimeSecs"`
-	NetUp         uint64  `json:"netUp"`
-	NetDown       uint64  `json:"netDown"`
-	LastError     string  `json:"lastError"`
-	XrayState     string  `json:"xrayState"`
-	XrayError     string  `json:"xrayError"`
-	ConfigDirty   bool    `json:"configDirty"`
-	ConfigDirtyAt int64   `json:"configDirtyAt"`
-	InboundCount  int     `json:"inboundCount"`
-	ClientCount   int     `json:"clientCount"`
-	OnlineCount   int     `json:"onlineCount"`
-	ActiveCount   int     `json:"activeCount"`
-	DisabledCount int     `json:"disabledCount"`
-	DepletedCount int     `json:"depletedCount"`
-	ParentGuid    string  `json:"parentGuid,omitempty"`
-	Transitive    bool    `json:"transitive,omitempty"`
-	CreatedAt     int64   `json:"createdAt"`
-	UpdatedAt     int64   `json:"updatedAt"`
+	Guid               string   `json:"guid"`
+	Status             string   `json:"status"`
+	LastHeartbeat      int64    `json:"lastHeartbeat"`
+	LatencyMs          int      `json:"latencyMs"`
+	XrayVersion        string   `json:"xrayVersion"`
+	PanelVersion       string   `json:"panelVersion"`
+	CpuPct             float64  `json:"cpuPct"`
+	MemPct             float64  `json:"memPct"`
+	UptimeSecs         uint64   `json:"uptimeSecs"`
+	UnavailableMetrics []string `json:"unavailableMetrics,omitempty"`
+	NetUp              uint64   `json:"netUp"`
+	NetDown            uint64   `json:"netDown"`
+	LastError          string   `json:"lastError"`
+	XrayState          string   `json:"xrayState"`
+	XrayError          string   `json:"xrayError"`
+	ConfigDirty        bool     `json:"configDirty"`
+	ConfigDirtyAt      int64    `json:"configDirtyAt"`
+	InboundCount       int      `json:"inboundCount"`
+	ClientCount        int      `json:"clientCount"`
+	OnlineCount        int      `json:"onlineCount"`
+	ActiveCount        int      `json:"activeCount"`
+	DisabledCount      int      `json:"disabledCount"`
+	DepletedCount      int      `json:"depletedCount"`
+	ParentGuid         string   `json:"parentGuid,omitempty"`
+	Transitive         bool     `json:"transitive,omitempty"`
+	CreatedAt          int64    `json:"createdAt"`
+	UpdatedAt          int64    `json:"updatedAt"`
 }
 
 // ParseJSONField decodes a JSON string into a generic map.

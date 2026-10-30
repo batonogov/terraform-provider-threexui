@@ -18,8 +18,9 @@ The provider officially supports every released patch across all supported 3x-ui
 <!-- sync-versions:begin -->
 | 3x-ui version | Status | Notes |
 | --- | --- | --- |
-| v3.10.2 | Tested | Shadowsocks client hot apply, reduced node-sync writes, and vmess link-import fixes. |
-| v3.10.0 | Tested | Xray-core v26.10.10, DNS/routing Lua script paths, resolver IDs, and outbound system CA support. See limitations and upgrade notes below. |
+| v3.11.0 | Tested | Kernel AmneziaWG and ranged client keepalive, per-client host bindings, SNI pools, host ordering, and Xray-core v26.10.21; fresh panels generate random first-user credentials. |
+| v3.10.2 | Tested | |
+| v3.10.0 | Tested | |
 | v3.9.0 | Tested | Incy client customization (`subIncy*`), external-subscription User-Agent, inbound `exclude_from_sub`, weekly client renewals (`reset_weekday`); inbound updates merge instead of reverting concurrent client/enable changes; xray-core v26.9.30 with WireGuard domain-strategy and xdns finalmask migrations. |
 | v3.8.5 | Tested | Rebuilt subscription page; Xray survives a bad config (port-collision saves and enables are refused); large-fleet node sync; empty REALITY `min_client_ver` now means no minimum (xray-core v26.9.9). |
 | v3.8.0 | Tested | TUIC v5 inbounds, AmneziaWG outbounds, a Discord notification bot (10 `discord*` settings), Happ client customization (`subHapp*`), `sub_profile_mode`, xray-core v26.9.9 with one-time template migrations, and hardened installs. |
@@ -34,6 +35,14 @@ The provider officially supports every released patch across all supported 3x-ui
 <!-- sync-versions:end -->
 
 Older lines (3.2.x, 3.1.x, 3.0.x, 2.9.x and earlier) are no longer tested. The provider may still work, but compatibility is not guaranteed.
+
+## v3.11.x scope and upgrade notes
+
+The provider models the v3.11.0 panel, host-group, client, AmneziaWG, and node-status additions. MASQUE and XDRIVE remain unmodeled, as in v3.10.x; their raw configurations must not be managed with the typed inbound/outbound resources. Xray-core v26.10.21 renames the XDRIVE service from `Google Drive` to `google-drive` and changes finalmask/Lua/XDNS behavior; review raw JSON after upgrading rather than normalizing it back to the old spelling.
+
+Fresh v3.11.0 installations generate random first-user credentials instead of `admin`/`admin`. Read them from the first-start log or set explicit credentials with `x-ui setting -username <user> -password <pass>` before configuring the provider. The repository's Docker acceptance tasks set the test credentials automatically.
+
+Upstream details: [v3.11.0 release](https://github.com/MHSanaei/3x-ui/releases/tag/v3.11.0).
 
 ## v3.10.x scope and upgrade notes
 
@@ -141,6 +150,7 @@ Current version gates:
 - **v3.5.0+**: host groups, MTProto per-client FakeTLS fields, Xray environment variables, outbound target strategy, and expanded balancer settings.
 - **v3.6.0+**: inbound `traffic_reset_day`, SMTP `From` header, subscription format auto-detection, and node `api_token_wo`.
 - **v3.7.0+**: inbound `disable_flow`, per-client calendar renewals (`reset_day`, `reset_max`) and traffic reset cycle (`traffic_reset`, `traffic_reset_day`), panel `ip_limit_allowlist`, and subscription `sub_json_observatory`.
+- **v3.11.0+**: `node_down_threshold`, `sub_host_sort_mode`, `sub_clash_remote_dns`, host-group SNI pools/CIDR counts, client host bindings, AmneziaWG kernel mode and keepalive ranges, and node `unavailable_metrics`.
 
 Tests without `requireMinVersion` run on all supported versions (v3.3.0+).
 
@@ -150,13 +160,13 @@ The provider communicates with whatever 3x-ui version is running on your host. T
 
 ```bash
 # Set the 3x-ui image tag
-export THREEXUI_VERSION=v3.10.2
+export THREEXUI_VERSION=v3.11.0
 
 # Start the container
 docker compose up -d
 ```
 
-In `docker-compose.yaml`, the image tag is parameterized via `${THREEXUI_VERSION:-v3.10.2}`, so omitting the variable defaults to the latest tested version.
+In `docker-compose.yaml`, the image tag is parameterized via `${THREEXUI_VERSION:-v3.11.0}`, so omitting the variable defaults to the latest tested version.
 
 For the Terraform provider itself, use the latest release from the [Terraform Registry](https://registry.terraform.io/providers/batonogov/threexui). The single provider binary supports all 3x-ui versions listed in the compatibility table above.
 

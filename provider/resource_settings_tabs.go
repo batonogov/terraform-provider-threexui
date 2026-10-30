@@ -790,6 +790,10 @@ type PanelSubscriptionModel struct {
 	SubIncyResolveEnable       types.String             `tfsdk:"sub_incy_resolve_enable"`
 	SubIncyResolveDnsDomain    urlSchemeNormalizedValue `tfsdk:"sub_incy_resolve_dns_domain"`
 	SubIncyResolveDnsIp        types.String             `tfsdk:"sub_incy_resolve_dns_ip"`
+
+	// v3.11.0: remote Clash DNS is frozen by initRouter; host ordering is read per request.
+	SubClashRemoteDNS types.Bool   `tfsdk:"sub_clash_remote_dns"`
+	SubHostSortMode   types.String `tfsdk:"sub_host_sort_mode"`
 }
 
 func panelSubscriptionSchema() schema.Schema {
@@ -1304,6 +1308,19 @@ func panelSubscriptionSchema() schema.Schema {
 				Description:   "Clash/Mihomo global routing rules (3x-ui v3.2.8+).",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
+			"sub_clash_remote_dns": schema.BoolAttribute{
+				Optional:      true,
+				Computed:      true,
+				Description:   "Take dns and sniffer blocks from remote Clash rule templates. Requires 3x-ui v3.11.0+; changing it restarts the subscription server.",
+				PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+			},
+			"sub_host_sort_mode": schema.StringAttribute{
+				Optional:      true,
+				Computed:      true,
+				Description:   "Subscription host ordering: inbound-first or hosts-first. Requires 3x-ui v3.11.0+; older panels read it back empty.",
+				Validators:    []validator.String{stringvalidator.OneOf("inbound-first", "hosts-first")},
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
 			"sub_clash_auto_detect": schema.BoolAttribute{
 				Optional:      true,
 				Computed:      true,
@@ -1637,6 +1654,12 @@ func expandPanelSubscription(m *PanelSubscriptionModel) map[string]any {
 	if !m.SubClashRules.IsNull() && !m.SubClashRules.IsUnknown() {
 		payload["subClashRules"] = m.SubClashRules.ValueString()
 	}
+	if !m.SubClashRemoteDNS.IsNull() && !m.SubClashRemoteDNS.IsUnknown() {
+		payload["subClashRemoteDNS"] = m.SubClashRemoteDNS.ValueBool()
+	}
+	if !m.SubHostSortMode.IsNull() && !m.SubHostSortMode.IsUnknown() {
+		payload["subHostSortMode"] = m.SubHostSortMode.ValueString()
+	}
 	if !m.SubClashAutoDetect.IsNull() && !m.SubClashAutoDetect.IsUnknown() {
 		payload["subClashAutoDetect"] = m.SubClashAutoDetect.ValueBool()
 	}
@@ -1961,6 +1984,12 @@ func flattenPanelSubscription(in map[string]any) *PanelSubscriptionModel {
 	if v, ok := in["subClashRules"]; ok {
 		m.SubClashRules = types.StringValue(stringValue(v))
 	}
+	if v, ok := in["subClashRemoteDNS"]; ok {
+		m.SubClashRemoteDNS = types.BoolValue(boolValue(v))
+	}
+	if v, ok := in["subHostSortMode"]; ok {
+		m.SubHostSortMode = types.StringValue(stringValue(v))
+	}
 	if v, ok := in["subClashAutoDetect"]; ok {
 		m.SubClashAutoDetect = types.BoolValue(boolValue(v))
 	}
@@ -2056,6 +2085,7 @@ type PanelGeneralModel struct {
 	ExternalTrafficInformURI    types.String `tfsdk:"external_traffic_inform_uri"`
 	SubShowIdentityOnAllLinks   types.Bool   `tfsdk:"sub_show_identity_on_all_links"`
 	OutboundDownThreshold       types.Int64  `tfsdk:"outbound_down_threshold"`
+	NodeDownThreshold           types.Int64  `tfsdk:"node_down_threshold"`
 	RestartXrayOnClientDisable  types.Bool   `tfsdk:"restart_xray_on_client_disable"`
 	IPLimitAllowlist            types.String `tfsdk:"ip_limit_allowlist"`
 	RealityScanCandidates       types.String `tfsdk:"reality_scan_candidates"`
@@ -2180,6 +2210,13 @@ func panelGeneralSchema() schema.Schema {
 				Computed:      true,
 				Description:   "Consecutive-failure threshold before outbound.down alert fires (1-100). 3x-ui v3.6.0+; older panels report 0 (unsupported).",
 				Validators:    []validator.Int64{int64validator.Between(0, 100)},
+				PlanModifiers: []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
+			},
+			"node_down_threshold": schema.Int64Attribute{
+				Optional:      true,
+				Computed:      true,
+				Description:   "Consecutive-failure threshold before node.down alert fires (1-100). 3x-ui v3.11.0+; older panels report 0 (unsupported).",
+				Validators:    []validator.Int64{int64validator.Between(1, 100)},
 				PlanModifiers: []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
 			},
 			"restart_xray_on_client_disable": schema.BoolAttribute{
@@ -2395,6 +2432,9 @@ func expandPanelGeneral(m *PanelGeneralModel) map[string]any {
 	if !m.OutboundDownThreshold.IsNull() && !m.OutboundDownThreshold.IsUnknown() {
 		payload["outboundDownThreshold"] = int(m.OutboundDownThreshold.ValueInt64())
 	}
+	if !m.NodeDownThreshold.IsNull() && !m.NodeDownThreshold.IsUnknown() {
+		payload["nodeDownThreshold"] = int(m.NodeDownThreshold.ValueInt64())
+	}
 	if !m.RestartXrayOnClientDisable.IsNull() && !m.RestartXrayOnClientDisable.IsUnknown() {
 		payload["restartXrayOnClientDisable"] = m.RestartXrayOnClientDisable.ValueBool()
 	}
@@ -2538,6 +2578,9 @@ func flattenPanelGeneral(in map[string]any) *PanelGeneralModel {
 	}
 	if v, ok := in["outboundDownThreshold"]; ok {
 		m.OutboundDownThreshold = types.Int64Value(int64(intValue(v)))
+	}
+	if v, ok := in["nodeDownThreshold"]; ok {
+		m.NodeDownThreshold = types.Int64Value(int64(intValue(v)))
 	}
 	if v, ok := in["restartXrayOnClientDisable"]; ok {
 		m.RestartXrayOnClientDisable = types.BoolValue(boolValue(v))
@@ -4079,6 +4122,7 @@ func panelSettingsNeedRestart(existing, desired map[string]any) bool {
 		"subJsonObservatory",
 		"subClashRules",
 		"subClashEnableRouting",
+		"subClashRemoteDNS",
 		// Client-detection and body-shape switches.
 		"subJsonAutoDetect",
 		"subJsonAlwaysArray",
@@ -4183,7 +4227,7 @@ func panelSettingsNeedRestart(existing, desired map[string]any) bool {
 			// The panel does not report this key at all, which means its version
 			// predates the setting: /setting/update will drop it just as
 			// /setting/all omitted it. Restarting would bounce the panel on every
-			// apply for a value that is never stored — 7 of the 13 versions in
+			// apply for a value that is never stored — 7 of the 14 versions in
 			// compat-versions.json predate the smtp*/tg* keys below.
 			continue
 		}

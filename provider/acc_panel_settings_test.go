@@ -1861,3 +1861,51 @@ resource "threexui_panel_discord" "test" {
 		},
 	})
 }
+
+func TestAccPanelSettings_v311(t *testing.T) {
+	requireMinVersion(t, "v3.11.0")
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: testAccProviderConfig() + `
+resource "threexui_panel_general" "g" {
+  node_down_threshold = 4
+}
+resource "threexui_panel_subscription" "sub" {
+  sub_enable           = false
+  sub_listen           = ""
+  sub_port             = 2096
+  sub_host_sort_mode   = "hosts-first"
+  sub_clash_remote_dns = true
+}
+`,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("threexui_panel_general.g", "node_down_threshold", "4"),
+					resource.TestCheckResourceAttr("threexui_panel_subscription.sub", "sub_host_sort_mode", "hosts-first"),
+					resource.TestCheckResourceAttr("threexui_panel_subscription.sub", "sub_clash_remote_dns", "true"),
+				),
+			},
+			{
+				Config: testAccProviderConfig() + `
+resource "threexui_panel_general" "g" {
+  node_down_threshold = 2
+}
+resource "threexui_panel_subscription" "sub" {
+  sub_enable           = false
+  sub_listen           = ""
+  sub_port             = 2096
+  sub_host_sort_mode   = "inbound-first"
+  sub_clash_remote_dns = false
+}
+`,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("threexui_panel_general.g", "node_down_threshold", "2"),
+					resource.TestCheckResourceAttr("threexui_panel_subscription.sub", "sub_host_sort_mode", "inbound-first"),
+					resource.TestCheckResourceAttr("threexui_panel_subscription.sub", "sub_clash_remote_dns", "false"),
+				),
+			},
+		},
+	})
+}

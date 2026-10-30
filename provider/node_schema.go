@@ -43,32 +43,33 @@ type NodeResourceModel struct {
 	OutboundTag               types.String   `tfsdk:"outbound_tag"`
 
 	// Observed identity / heartbeat state (Computed).
-	Guid          types.String  `tfsdk:"guid"`
-	Status        types.String  `tfsdk:"status"`
-	LastHeartbeat types.Int64   `tfsdk:"last_heartbeat"`
-	LatencyMs     types.Int64   `tfsdk:"latency_ms"`
-	XrayVersion   types.String  `tfsdk:"xray_version"`
-	PanelVersion  types.String  `tfsdk:"panel_version"`
-	CpuPct        types.Float64 `tfsdk:"cpu_pct"`
-	MemPct        types.Float64 `tfsdk:"mem_pct"`
-	UptimeSecs    types.Int64   `tfsdk:"uptime_secs"`
-	NetUp         types.Int64   `tfsdk:"net_up"`
-	NetDown       types.Int64   `tfsdk:"net_down"`
-	LastError     types.String  `tfsdk:"last_error"`
-	XrayState     types.String  `tfsdk:"xray_state"`
-	XrayError     types.String  `tfsdk:"xray_error"`
-	ConfigDirty   types.Bool    `tfsdk:"config_dirty"`
-	ConfigDirtyAt types.Int64   `tfsdk:"config_dirty_at"`
-	InboundCount  types.Int64   `tfsdk:"inbound_count"`
-	ClientCount   types.Int64   `tfsdk:"client_count"`
-	OnlineCount   types.Int64   `tfsdk:"online_count"`
-	ActiveCount   types.Int64   `tfsdk:"active_count"`
-	DisabledCount types.Int64   `tfsdk:"disabled_count"`
-	DepletedCount types.Int64   `tfsdk:"depleted_count"`
-	ParentGuid    types.String  `tfsdk:"parent_guid"`
-	Transitive    types.Bool    `tfsdk:"transitive"`
-	CreatedAt     types.Int64   `tfsdk:"created_at"`
-	UpdatedAt     types.Int64   `tfsdk:"updated_at"`
+	Guid               types.String  `tfsdk:"guid"`
+	Status             types.String  `tfsdk:"status"`
+	LastHeartbeat      types.Int64   `tfsdk:"last_heartbeat"`
+	LatencyMs          types.Int64   `tfsdk:"latency_ms"`
+	XrayVersion        types.String  `tfsdk:"xray_version"`
+	PanelVersion       types.String  `tfsdk:"panel_version"`
+	CpuPct             types.Float64 `tfsdk:"cpu_pct"`
+	MemPct             types.Float64 `tfsdk:"mem_pct"`
+	UptimeSecs         types.Int64   `tfsdk:"uptime_secs"`
+	UnavailableMetrics types.List    `tfsdk:"unavailable_metrics"` // list of string
+	NetUp              types.Int64   `tfsdk:"net_up"`
+	NetDown            types.Int64   `tfsdk:"net_down"`
+	LastError          types.String  `tfsdk:"last_error"`
+	XrayState          types.String  `tfsdk:"xray_state"`
+	XrayError          types.String  `tfsdk:"xray_error"`
+	ConfigDirty        types.Bool    `tfsdk:"config_dirty"`
+	ConfigDirtyAt      types.Int64   `tfsdk:"config_dirty_at"`
+	InboundCount       types.Int64   `tfsdk:"inbound_count"`
+	ClientCount        types.Int64   `tfsdk:"client_count"`
+	OnlineCount        types.Int64   `tfsdk:"online_count"`
+	ActiveCount        types.Int64   `tfsdk:"active_count"`
+	DisabledCount      types.Int64   `tfsdk:"disabled_count"`
+	DepletedCount      types.Int64   `tfsdk:"depleted_count"`
+	ParentGuid         types.String  `tfsdk:"parent_guid"`
+	Transitive         types.Bool    `tfsdk:"transitive"`
+	CreatedAt          types.Int64   `tfsdk:"created_at"`
+	UpdatedAt          types.Int64   `tfsdk:"updated_at"`
 }
 
 // nodeResourceSchema returns the schema for the threexui_node resource.
@@ -237,7 +238,12 @@ func nodeResourceSchema() schema.Schema {
 					float64planmodifier.UseStateForUnknown(),
 				},
 			},
-			"uptime_secs":     computedInt64("Node uptime in seconds."),
+			"uptime_secs": computedInt64("Node uptime in seconds."),
+			"unavailable_metrics": schema.ListAttribute{
+				Computed:    true,
+				ElementType: types.StringType,
+				Description: "Container metrics unavailable on the node; a metric absent from this list can legitimately be zero. Requires 3x-ui v3.11.0+.",
+			},
 			"net_up":          computedInt64("Network upload bytes."),
 			"net_down":        computedInt64("Network download bytes."),
 			"last_error":      computedString("Last heartbeat error message."),

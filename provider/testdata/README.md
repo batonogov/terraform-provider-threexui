@@ -18,8 +18,9 @@ flatten/expand conversion layers.
 When the upstream 3x-ui panel changes its API payloads:
 
 1. Start a local instance: `docker compose up -d && sleep 15`
-2. Log in and create representative inbounds via the web UI
-3. Fetch raw payloads:
+2. Set the test credentials with `docker compose exec -T 3xui /app/x-ui setting -username admin -password admin` (fresh v3.11.0+ panels otherwise generate random first-user credentials)
+3. Log in and create representative inbounds via the web UI
+4. Fetch raw payloads:
 
    ```bash
    # Login (3x-ui v3 requires CSRF)
@@ -47,7 +48,7 @@ When the upstream 3x-ui panel changes its API payloads:
      -X POST http://localhost:2053/panel/setting/all | jq .obj
    ```
 
-4. Replace the fixture files with the new payloads
-5. Remove zero-value / empty-string fields that the provider's build
+5. Replace the fixture files with the new payloads
+6. Remove zero-value / empty-string fields that the provider's build
    functions intentionally skip (these are not round-trip stable)
-6. Run `go test ./provider/ -run TestCorpus -v` and fix any failures
+7. Run `go test ./provider/ -run TestCorpus -v` and fix any failures

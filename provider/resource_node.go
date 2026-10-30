@@ -373,8 +373,9 @@ func flattenNodeToModel(n *Node, m *NodeResourceModel) {
 	// Traffic/uptime come from the panel as uint64; clamping to int64 is safe in
 	// practice (net bytes < 9.2 EB, uptime < ~292 years never overflow int64).
 	m.UptimeSecs = types.Int64Value(int64(n.UptimeSecs)) //nolint:gosec // G115: see comment above
-	m.NetUp = types.Int64Value(int64(n.NetUp))           //nolint:gosec // G115: see comment above
-	m.NetDown = types.Int64Value(int64(n.NetDown))       //nolint:gosec // G115: see comment above
+	m.UnavailableMetrics = sliceToStringList(n.UnavailableMetrics)
+	m.NetUp = types.Int64Value(int64(n.NetUp))     //nolint:gosec // G115: see comment above
+	m.NetDown = types.Int64Value(int64(n.NetDown)) //nolint:gosec // G115: see comment above
 	m.LastError = types.StringValue(n.LastError)
 	m.XrayState = types.StringValue(n.XrayState)
 	m.XrayError = types.StringValue(n.XrayError)

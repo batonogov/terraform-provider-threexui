@@ -97,6 +97,7 @@ resource "threexui_inbound_client" "client_a" {
 
 | 3x-ui version | Status |
 | --- | --- |
+| v3.11.0 | Tested |
 | v3.10.2 | Tested |
 | v3.10.0 | Tested |
 | v3.9.0 | Tested |
@@ -211,6 +212,9 @@ task test         # Run unit + acceptance tests
 ```bash
 # Start 3x-ui on localhost:2053
 docker compose up -d
+
+# Set the local test credentials (fresh v3.11.0+ panels generate random ones)
+docker compose exec -T 3xui /app/x-ui setting -username admin -password admin
 
 # Login: admin / admin
 

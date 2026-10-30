@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
@@ -62,6 +63,7 @@ type InboundAmneziawgServerModel struct {
 	IPv6ExternalInterface types.String `tfsdk:"ipv6_external_interface"`
 
 	RouteThroughXray types.Bool `tfsdk:"route_through_xray"`
+	KernelMode       types.Bool `tfsdk:"kernel_mode"`
 
 	// Junk-packet and header obfuscation. The panel generates a randomised set
 	// when the inbound is created without settings.
@@ -101,22 +103,24 @@ type InboundAmneziawgServerModel struct {
 // InboundAmneziawgClientModel is one AmneziaWG peer. The generic client keys are
 // the same as everywhere else (model.Client); `forwarded_ports` is AmneziaWG-only.
 type InboundAmneziawgClientModel struct {
-	Email          types.String `tfsdk:"email"`
-	PrivateKey     types.String `tfsdk:"private_key"`
-	PublicKey      types.String `tfsdk:"public_key"`
-	PreSharedKey   types.String `tfsdk:"pre_shared_key"`
-	AllowedIPs     types.List   `tfsdk:"allowed_ips"` // list of string
-	KeepAlive      types.Int64  `tfsdk:"keep_alive"`
-	ForwardedPorts types.String `tfsdk:"forwarded_ports"`
-	Enable         types.Bool   `tfsdk:"enable"`
-	LimitIP        types.Int64  `tfsdk:"limit_ip"`
-	TotalGB        types.Int64  `tfsdk:"total_gb"`
-	ExpiryTime     types.Int64  `tfsdk:"expiry_time"`
-	TgID           types.Int64  `tfsdk:"tg_id"`
-	SubID          types.String `tfsdk:"sub_id"`
-	Comment        types.String `tfsdk:"comment"`
-	Reset          types.Int64  `tfsdk:"reset"`
-	Group          types.String `tfsdk:"group"`
+	Email             types.String `tfsdk:"email"`
+	PrivateKey        types.String `tfsdk:"private_key"`
+	PublicKey         types.String `tfsdk:"public_key"`
+	PreSharedKey      types.String `tfsdk:"pre_shared_key"`
+	AllowedIPs        types.List   `tfsdk:"allowed_ips"` // list of string
+	KeepAlive         types.Int64  `tfsdk:"keep_alive"`
+	KeepAliveRange    types.String `tfsdk:"keep_alive_range"`
+	ClientHostRuleIDs types.List   `tfsdk:"client_host_rule_ids"` // list of int64
+	ForwardedPorts    types.String `tfsdk:"forwarded_ports"`
+	Enable            types.Bool   `tfsdk:"enable"`
+	LimitIP           types.Int64  `tfsdk:"limit_ip"`
+	TotalGB           types.Int64  `tfsdk:"total_gb"`
+	ExpiryTime        types.Int64  `tfsdk:"expiry_time"`
+	TgID              types.Int64  `tfsdk:"tg_id"`
+	SubID             types.String `tfsdk:"sub_id"`
+	Comment           types.String `tfsdk:"comment"`
+	Reset             types.Int64  `tfsdk:"reset"`
+	Group             types.String `tfsdk:"group"`
 	// Renewal and bookkeeping fields the panel keeps on every client
 	// (model.Client:904-911, :843-844). They are modelled even though they are
 	// not AmneziaWG-specific: the inbound rewrites clients[] wholesale on every
@@ -201,6 +205,42 @@ func uintRange() []validator.String {
 	}
 }
 
+type awgKeepAliveRangeValidator struct{}
+
+func (awgKeepAliveRangeValidator) Description(_ context.Context) string {
+	return "keep_alive_range must contain ordered integers from 0 to 65535"
+}
+
+func (v awgKeepAliveRangeValidator) MarkdownDescription(ctx context.Context) string {
+	return v.Description(ctx)
+}
+
+func (awgKeepAliveRangeValidator) ValidateString(_ context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
+	}
+	invalid := func() {
+		resp.Diagnostics.AddError(
+			"Invalid AmneziaWG keepalive range",
+			fmt.Sprintf("Range %q must contain ordered integers from 0 to 65535.", req.ConfigValue.ValueString()),
+		)
+	}
+	parts := strings.Split(req.ConfigValue.ValueString(), "-")
+	if len(parts) != 2 {
+		invalid()
+		return
+	}
+	minimum, minErr := strconv.Atoi(parts[0])
+	maximum, maxErr := strconv.Atoi(parts[1])
+	if minErr != nil || maxErr != nil {
+		invalid()
+		return
+	}
+	if minimum < 0 || maximum > 65535 || minimum > maximum {
+		invalid()
+	}
+}
+
 func amneziawgSettingsBlock() schema.SingleNestedBlock {
 	return schema.SingleNestedBlock{
 		Description: "Settings for the AmneziaWG protocol (3x-ui v3.7.0+). AmneziaWG is WireGuard with DPI-resistant obfuscation, run in-process on an embedded userspace device. Peers are managed here through `clients`, not through separate `threexui_inbound_client` resources.",
@@ -227,6 +267,7 @@ func amneziawgSettingsBlock() schema.SingleNestedBlock {
 					"ipv6_external_interface": awgString("Host NIC used for IPv6 egress. Omit to reuse the IPv4 interface.", nonEmpty()...),
 
 					"route_through_xray": awgBool("Vestigial upstream — the embedded relay is always on and nothing reads this flag. Round-tripped so the settings blob is not silently altered on save."),
+					"kernel_mode":        awgBool("Use the Linux AmneziaWG kernel datapath instead of the embedded userspace stack (3x-ui v3.11.0+). Kernel mode is NAT-only and does not support Xray routing, sniffing, IPv6, or peer port forwarding; the panel preflights kernel-module availability on the host."),
 
 					"jc":   awgInt("Junk packet count."),
 					"jmin": awgInt("Minimum junk packet size. Must not exceed `jmax`."),
@@ -299,7 +340,26 @@ func amneziawgClientsBlock() schema.ListNestedBlock {
 						listplanmodifier.UseStateForUnknown(),
 					},
 				},
-				"keep_alive":      awgInt("Persistent keepalive in seconds. Omit to disable it — the panel strips a zero, so `0` cannot round-trip.", int64validator.AtLeast(1)),
+				"keep_alive": awgInt("Persistent keepalive in seconds (0-65535). On 3x-ui v3.11.0+, 0 disables keepalive and clears a previous range; older panels strip zero, so use a positive value there.", int64validator.Between(0, 65535)),
+				"keep_alive_range": schema.StringAttribute{
+					Optional:    true,
+					Description: "Randomised persistent keepalive range in canonical `min-max` seconds form, e.g. `15-25` (3x-ui v3.11.0+). Mutually exclusive with keep_alive; set keep_alive = 0 to disable a previous range.",
+					Validators: []validator.String{
+						stringvalidator.RegexMatches(regexp.MustCompile(`^(0|[1-9]\d*)-(0|[1-9]\d*)$`), "must use canonical min-max seconds without spaces or leading zeroes"),
+						awgKeepAliveRangeValidator{},
+						stringvalidator.ConflictsWith(path.MatchRelative().AtParent().AtName("keep_alive")),
+					},
+				},
+				"client_host_rule_ids": schema.ListAttribute{
+					Optional:    true,
+					Computed:    true,
+					ElementType: types.Int64Type,
+					Description: "Host rule IDs bound to this peer. Omit to preserve, [] to clear. Requires 3x-ui v3.11.0+.",
+					Validators:  []validator.List{clientHostRuleIDsValidator{}},
+					PlanModifiers: []planmodifier.List{
+						listplanmodifier.UseStateForUnknown(),
+					},
+				},
 				"forwarded_ports": awgString("Ports DNAT-forwarded to this peer, e.g. `80,443,8000-8100`. Expands to at most 100 ports. The panel rejects a spec that collides with the panel's own port, any enabled inbound's port, or this inbound's SOCKS relay port (65100 + inbound id); malformed tokens are silently dropped.", nonEmpty()...),
 				"enable":          awgBool("Whether the client is enabled."),
 				"limit_ip":        awgInt("Concurrent IP limit (0 = unlimited)."),
@@ -380,6 +440,7 @@ func expandAmneziawgServerFromModel(m *InboundAmneziawgServerModel) map[string]a
 	awgPutString(out, "ipv6Subnet", m.IPv6Subnet)
 	awgPutString(out, "ipv6ExternalInterface", m.IPv6ExternalInterface)
 	awgPutBool(out, "routeThroughXray", m.RouteThroughXray)
+	awgPutBool(out, "kernelMode", m.KernelMode)
 
 	awgPutInt(out, "jc", m.Jc)
 	awgPutInt(out, "jmin", m.Jmin)
@@ -424,7 +485,14 @@ func expandAmneziawgClientsFromModel(list []InboundAmneziawgClientModel) []any {
 		if !c.AllowedIPs.IsNull() && !c.AllowedIPs.IsUnknown() {
 			entry["allowedIPs"] = typesListToAnySlice(c.AllowedIPs)
 		}
-		awgPutInt(entry, "keepAlive", c.KeepAlive)
+		if !c.KeepAliveRange.IsNull() && !c.KeepAliveRange.IsUnknown() {
+			awgPutString(entry, "keepAlive", c.KeepAliveRange)
+		} else {
+			awgPutInt(entry, "keepAlive", c.KeepAlive)
+		}
+		if !c.ClientHostRuleIDs.IsNull() && !c.ClientHostRuleIDs.IsUnknown() {
+			entry["clientHostRuleIds"] = typesListInt64ToAnySlice(c.ClientHostRuleIDs)
+		}
 		awgPutString(entry, "forwardedPorts", c.ForwardedPorts)
 		awgPutBool(entry, "enable", c.Enable)
 		awgPutInt(entry, "limitIp", c.LimitIP)
@@ -514,6 +582,7 @@ func flattenAmneziawgServerToModel(raw map[string]any) *InboundAmneziawgServerMo
 		IPv6ExternalInterface: awgReadString(raw, "ipv6ExternalInterface"),
 
 		RouteThroughXray: awgReadBool(raw, "routeThroughXray"),
+		KernelMode:       awgReadBool(raw, "kernelMode"),
 
 		Jc:   awgReadInt(raw, "jc"),
 		Jmin: awgReadInt(raw, "jmin"),
@@ -554,28 +623,31 @@ func flattenAmneziawgClientsToModel(list []any) []InboundAmneziawgClientModel {
 		if !ok {
 			continue
 		}
+		keepAlive, keepAliveRange := awgReadKeepAlive(raw)
 		c := InboundAmneziawgClientModel{
-			Email:           awgReadString(raw, "email"),
-			PrivateKey:      awgReadString(raw, "privateKey"),
-			PublicKey:       awgReadString(raw, "publicKey"),
-			PreSharedKey:    awgReadString(raw, "preSharedKey"),
-			KeepAlive:       awgReadInt(raw, "keepAlive"),
-			ForwardedPorts:  awgReadString(raw, "forwardedPorts"),
-			Enable:          awgReadBool(raw, "enable"),
-			LimitIP:         awgReadInt(raw, "limitIp"),
-			TotalGB:         awgReadInt(raw, "totalGB"),
-			ExpiryTime:      awgReadInt(raw, "expiryTime"),
-			TgID:            awgReadInt(raw, "tgId"),
-			SubID:           awgReadString(raw, "subId"),
-			Comment:         awgReadString(raw, "comment"),
-			Reset:           awgReadInt(raw, "reset"),
-			Group:           awgReadString(raw, "group"),
-			ResetDay:        awgReadInt(raw, "resetDay"),
-			ResetMax:        awgReadInt(raw, "resetMax"),
-			TrafficReset:    awgReadString(raw, "trafficReset"),
-			TrafficResetDay: awgReadInt(raw, "trafficResetDay"),
-			CreatedAt:       awgReadInt(raw, "created_at"),
-			UpdatedAt:       awgReadInt(raw, "updated_at"),
+			Email:             awgReadString(raw, "email"),
+			PrivateKey:        awgReadString(raw, "privateKey"),
+			PublicKey:         awgReadString(raw, "publicKey"),
+			PreSharedKey:      awgReadString(raw, "preSharedKey"),
+			KeepAlive:         keepAlive,
+			KeepAliveRange:    keepAliveRange,
+			ClientHostRuleIDs: flattenClientHostRuleIDs(raw["clientHostRuleIds"]),
+			ForwardedPorts:    awgReadString(raw, "forwardedPorts"),
+			Enable:            awgReadBool(raw, "enable"),
+			LimitIP:           awgReadInt(raw, "limitIp"),
+			TotalGB:           awgReadInt(raw, "totalGB"),
+			ExpiryTime:        awgReadInt(raw, "expiryTime"),
+			TgID:              awgReadInt(raw, "tgId"),
+			SubID:             awgReadString(raw, "subId"),
+			Comment:           awgReadString(raw, "comment"),
+			Reset:             awgReadInt(raw, "reset"),
+			Group:             awgReadString(raw, "group"),
+			ResetDay:          awgReadInt(raw, "resetDay"),
+			ResetMax:          awgReadInt(raw, "resetMax"),
+			TrafficReset:      awgReadString(raw, "trafficReset"),
+			TrafficResetDay:   awgReadInt(raw, "trafficResetDay"),
+			CreatedAt:         awgReadInt(raw, "created_at"),
+			UpdatedAt:         awgReadInt(raw, "updated_at"),
 		}
 		if v, ok := raw["allowedIPs"]; ok {
 			c.AllowedIPs = anySliceToTypesList(v)
@@ -588,6 +660,23 @@ func flattenAmneziawgClientsToModel(list []any) []InboundAmneziawgClientModel {
 		return nil
 	}
 	return out
+}
+
+func awgReadKeepAlive(raw map[string]any) (types.Int64, types.String) {
+	value, ok := raw["keepAlive"]
+	if !ok || value == nil {
+		return types.Int64Value(0), types.StringNull()
+	}
+	if text, ok := value.(string); ok {
+		if strings.Contains(text, "-") {
+			return types.Int64Null(), types.StringValue(text)
+		}
+		if seconds, err := strconv.ParseInt(text, 10, 64); err == nil {
+			return types.Int64Value(seconds), types.StringNull()
+		}
+		return types.Int64Null(), types.StringNull()
+	}
+	return types.Int64Value(int64(intValue(value))), types.StringNull()
 }
 
 // ---------------------------------------------------------------------------

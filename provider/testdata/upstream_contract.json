@@ -1,5 +1,5 @@
 {
-  "version": "3.10.2",
+  "version": "3.11.0",
   "protocols_go_model": [
     "amneziawg",
     "http",
@@ -96,6 +96,7 @@
     "allowedIPs",
     "allowedIPsByInbound",
     "auth",
+    "clientHostRuleIds",
     "comment",
     "created_at",
     "email",
@@ -164,6 +165,7 @@
     "ldapUserAttr",
     "ldapUserFilter",
     "ldapVlessField",
+    "nodeDownThreshold",
     "outboundDownThreshold",
     "pageSize",
     "panelOutbound",
@@ -190,6 +192,7 @@
     "subClashEnable",
     "subClashEnableRouting",
     "subClashPath",
+    "subClashRemoteDNS",
     "subClashRules",
     "subClashURI",
     "subClashUserAgentRegex",
@@ -223,6 +226,7 @@
     "subHappTunMode",
     "subHappTunType",
     "subHideSettings",
+    "subHostSortMode",
     "subIncyAnnounceUrl",
     "subIncyAppAutoDetect",
     "subIncyBannerBgColor",

@@ -19,6 +19,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -43,32 +44,33 @@ var (
 // ---------------------------------------------------------------------------
 
 type InboundClientResourceModel struct {
-	ID              types.String `tfsdk:"id"`
-	InboundID       types.Int64  `tfsdk:"inbound_id"`
-	ClientID        types.String `tfsdk:"client_id"`
-	Email           types.String `tfsdk:"email"`
-	Security        types.String `tfsdk:"security"`
-	Password        types.String `tfsdk:"password"`
-	Flow            types.String `tfsdk:"flow"`
-	ReverseTag      types.String `tfsdk:"reverse_tag"`
-	Auth            types.String `tfsdk:"auth"`
-	LimitIP         types.Int64  `tfsdk:"limit_ip"`
-	TotalGB         types.Int64  `tfsdk:"total_gb"`
-	ExpiryTime      types.Int64  `tfsdk:"expiry_time"`
-	Enable          types.Bool   `tfsdk:"enable"`
-	TgID            types.Int64  `tfsdk:"tg_id"`
-	SubID           types.String `tfsdk:"sub_id"`
-	Comment         types.String `tfsdk:"comment"`
-	Reset           types.Int64  `tfsdk:"reset"`
-	Group           types.String `tfsdk:"group"`
-	ResetDay        types.Int64  `tfsdk:"reset_day"`
-	ResetMax        types.Int64  `tfsdk:"reset_max"`
-	ResetWeekday    types.Int64  `tfsdk:"reset_weekday"`
-	TrafficReset    types.String `tfsdk:"traffic_reset"`
-	TrafficResetDay types.Int64  `tfsdk:"traffic_reset_day"`
-	Secret          types.String `tfsdk:"secret"`
-	AdTag           types.String `tfsdk:"ad_tag"`
-	RestartXray     types.Bool   `tfsdk:"restart_xray"`
+	ID                types.String `tfsdk:"id"`
+	InboundID         types.Int64  `tfsdk:"inbound_id"`
+	ClientID          types.String `tfsdk:"client_id"`
+	Email             types.String `tfsdk:"email"`
+	Security          types.String `tfsdk:"security"`
+	Password          types.String `tfsdk:"password"`
+	Flow              types.String `tfsdk:"flow"`
+	ReverseTag        types.String `tfsdk:"reverse_tag"`
+	Auth              types.String `tfsdk:"auth"`
+	LimitIP           types.Int64  `tfsdk:"limit_ip"`
+	TotalGB           types.Int64  `tfsdk:"total_gb"`
+	ExpiryTime        types.Int64  `tfsdk:"expiry_time"`
+	Enable            types.Bool   `tfsdk:"enable"`
+	TgID              types.Int64  `tfsdk:"tg_id"`
+	SubID             types.String `tfsdk:"sub_id"`
+	Comment           types.String `tfsdk:"comment"`
+	Reset             types.Int64  `tfsdk:"reset"`
+	Group             types.String `tfsdk:"group"`
+	ResetDay          types.Int64  `tfsdk:"reset_day"`
+	ResetMax          types.Int64  `tfsdk:"reset_max"`
+	ResetWeekday      types.Int64  `tfsdk:"reset_weekday"`
+	TrafficReset      types.String `tfsdk:"traffic_reset"`
+	TrafficResetDay   types.Int64  `tfsdk:"traffic_reset_day"`
+	ClientHostRuleIDs types.List   `tfsdk:"client_host_rule_ids"` // list of int64
+	Secret            types.String `tfsdk:"secret"`
+	AdTag             types.String `tfsdk:"ad_tag"`
+	RestartXray       types.Bool   `tfsdk:"restart_xray"`
 
 	// Write-only secret variants (Strategy B — see resource_node.go).
 	PasswordWO        types.String `tfsdk:"password_wo"`
@@ -310,6 +312,16 @@ func (r *InboundClientResource) Schema(_ context.Context, _ resource.SchemaReque
 				},
 				PlanModifiers: []planmodifier.Int64{
 					int64planmodifier.UseStateForUnknown(),
+				},
+			},
+			"client_host_rule_ids": schema.ListAttribute{
+				Optional:    true,
+				Computed:    true,
+				ElementType: types.Int64Type,
+				Description: "Host rule IDs bound to this client. Omit to preserve existing bindings; set [] to clear them. Requires 3x-ui v3.11.0+.",
+				Validators:  []validator.List{clientHostRuleIDsValidator{}},
+				PlanModifiers: []planmodifier.List{
+					listplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"secret": schema.StringAttribute{
@@ -790,6 +802,9 @@ func expandInboundClientFromModel(m *InboundClientResourceModel) map[string]any 
 	if !m.TrafficResetDay.IsNull() && !m.TrafficResetDay.IsUnknown() {
 		client["trafficResetDay"] = int(m.TrafficResetDay.ValueInt64())
 	}
+	if !m.ClientHostRuleIDs.IsNull() && !m.ClientHostRuleIDs.IsUnknown() {
+		client["clientHostRuleIds"] = typesListInt64ToAnySlice(m.ClientHostRuleIDs)
+	}
 	if !m.Secret.IsNull() && !m.Secret.IsUnknown() {
 		client["secret"] = m.Secret.ValueString()
 	}
@@ -805,31 +820,73 @@ func expandInboundClientFromModel(m *InboundClientResourceModel) map[string]any 
 
 func inboundClientToModel(inboundID int, clientID string, client map[string]any) *InboundClientResourceModel {
 	return &InboundClientResourceModel{
-		ID:              types.StringValue(makeInboundClientID(inboundID, clientID)),
-		InboundID:       types.Int64Value(int64(inboundID)),
-		ClientID:        types.StringValue(clientID),
-		Email:           types.StringValue(stringValue(client["email"])),
-		Security:        types.StringValue(stringValue(client["security"])),
-		Password:        types.StringValue(stringValue(client["password"])),
-		Flow:            types.StringValue(stringValue(client["flow"])),
-		ReverseTag:      types.StringValue(reverseTagValue(client["reverse"])),
-		Auth:            types.StringValue(stringValue(client["auth"])),
-		LimitIP:         types.Int64Value(int64(intValue(client["limitIp"]))),
-		TotalGB:         types.Int64Value(int64(intValue(client["totalGB"]))),
-		ExpiryTime:      types.Int64Value(int64(intValue(client["expiryTime"]))),
-		Enable:          types.BoolValue(boolValue(client["enable"])),
-		TgID:            types.Int64Value(int64(intValue(client["tgId"]))),
-		SubID:           types.StringValue(stringValue(client["subId"])),
-		Comment:         types.StringValue(stringValue(client["comment"])),
-		Reset:           types.Int64Value(int64(intValue(client["reset"]))),
-		Group:           stringValueOrNull(stringValue(client["group"])),
-		ResetDay:        types.Int64Value(int64(intValue(client["resetDay"]))),
-		ResetMax:        types.Int64Value(int64(intValue(client["resetMax"]))),
-		ResetWeekday:    types.Int64Value(int64(intValue(client["resetWeekday"]))),
-		TrafficReset:    stringValueOrNull(stringValue(client["trafficReset"])),
-		TrafficResetDay: types.Int64Value(int64(intValue(client["trafficResetDay"]))),
-		Secret:          stringValueOrNull(stringValue(client["secret"])),
-		AdTag:           stringValueOrNull(stringValue(client["adTag"])),
+		ID:                types.StringValue(makeInboundClientID(inboundID, clientID)),
+		InboundID:         types.Int64Value(int64(inboundID)),
+		ClientID:          types.StringValue(clientID),
+		Email:             types.StringValue(stringValue(client["email"])),
+		Security:          types.StringValue(stringValue(client["security"])),
+		Password:          types.StringValue(stringValue(client["password"])),
+		Flow:              types.StringValue(stringValue(client["flow"])),
+		ReverseTag:        types.StringValue(reverseTagValue(client["reverse"])),
+		Auth:              types.StringValue(stringValue(client["auth"])),
+		LimitIP:           types.Int64Value(int64(intValue(client["limitIp"]))),
+		TotalGB:           types.Int64Value(int64(intValue(client["totalGB"]))),
+		ExpiryTime:        types.Int64Value(int64(intValue(client["expiryTime"]))),
+		Enable:            types.BoolValue(boolValue(client["enable"])),
+		TgID:              types.Int64Value(int64(intValue(client["tgId"]))),
+		SubID:             types.StringValue(stringValue(client["subId"])),
+		Comment:           types.StringValue(stringValue(client["comment"])),
+		Reset:             types.Int64Value(int64(intValue(client["reset"]))),
+		Group:             stringValueOrNull(stringValue(client["group"])),
+		ResetDay:          types.Int64Value(int64(intValue(client["resetDay"]))),
+		ResetMax:          types.Int64Value(int64(intValue(client["resetMax"]))),
+		ResetWeekday:      types.Int64Value(int64(intValue(client["resetWeekday"]))),
+		TrafficReset:      stringValueOrNull(stringValue(client["trafficReset"])),
+		TrafficResetDay:   types.Int64Value(int64(intValue(client["trafficResetDay"]))),
+		ClientHostRuleIDs: flattenClientHostRuleIDs(client["clientHostRuleIds"]),
+		Secret:            stringValueOrNull(stringValue(client["secret"])),
+		AdTag:             stringValueOrNull(stringValue(client["adTag"])),
+	}
+}
+
+func flattenClientHostRuleIDs(v any) types.List {
+	if v == nil {
+		return types.ListValueMust(types.Int64Type, nil)
+	}
+	if values, ok := v.([]any); ok && len(values) == 0 {
+		return types.ListValueMust(types.Int64Type, nil)
+	}
+	return flattenToInt64List(v)
+}
+
+type clientHostRuleIDsValidator struct{}
+
+func (clientHostRuleIDsValidator) Description(_ context.Context) string {
+	return "client_host_rule_ids must contain unique positive host rule IDs"
+}
+
+func (v clientHostRuleIDsValidator) MarkdownDescription(ctx context.Context) string {
+	return v.Description(ctx)
+}
+
+func (clientHostRuleIDsValidator) ValidateList(_ context.Context, req validator.ListRequest, resp *validator.ListResponse) {
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
+	}
+	seen := make(map[int64]bool, len(req.ConfigValue.Elements()))
+	for _, element := range req.ConfigValue.Elements() {
+		id, ok := element.(types.Int64)
+		if !ok || id.IsNull() || id.IsUnknown() {
+			continue
+		}
+		if id.ValueInt64() <= 0 || seen[id.ValueInt64()] {
+			resp.Diagnostics.AddError(
+				"Invalid client host rule IDs",
+				fmt.Sprintf("IDs must be unique positive integers; got %d more than once or as a non-positive value.", id.ValueInt64()),
+			)
+			return
+		}
+		seen[id.ValueInt64()] = true
 	}
 }
 

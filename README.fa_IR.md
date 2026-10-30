@@ -103,6 +103,7 @@ resource "threexui_inbound_client" "client_a" {
 
 | نسخهٔ 3x-ui | وضعیت |
 | --- | --- |
+| v3.11.0 | تست‌شده |
 | v3.10.2 | تست‌شده |
 | v3.10.0 | تست‌شده |
 | v3.9.0 | تست‌شده |
@@ -217,6 +218,9 @@ task test         # unit + acceptance
 ```bash
 # اجرای 3x-ui روی localhost:2053
 docker compose up -d
+
+# تنظیم اطلاعات ورود آزمایشی (نسخهٔ v3.11.0+ اطلاعات تصادفی می‌سازد)
+docker compose exec -T 3xui /app/x-ui setting -username admin -password admin
 
 # لاگین: admin / admin
 

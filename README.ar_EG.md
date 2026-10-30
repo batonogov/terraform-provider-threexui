@@ -103,6 +103,7 @@ resource "threexui_inbound_client" "client_a" {
 
 | إصدار 3x-ui | الحالة |
 | --- | --- |
+| v3.11.0 | تم اختباره |
 | v3.10.2 | تم اختباره |
 | v3.10.0 | تم اختباره |
 | v3.9.0 | تم اختباره |
@@ -217,6 +218,9 @@ task test         # unit + acceptance
 ```bash
 # تشغيل 3x-ui على localhost:2053
 docker compose up -d
+
+# تعيين بيانات الدخول المحلية (الإصدارات v3.11.0+ تنشئ بيانات عشوائية)
+docker compose exec -T 3xui /app/x-ui setting -username admin -password admin
 
 # تسجيل الدخول: admin / admin
 
