@@ -100,6 +100,49 @@ resource "threexui_inbound" "ws" {
 }
 ```
 
+### WebSocket behind a reverse proxy (real client IP)
+
+Since xray-core v26.6.22 (3x-ui v3.4.0) a `ws`, `httpupgrade`, `xhttp` or `grpc`
+inbound ignores `X-Forwarded-For` unless `sockopt.trusted_x_forwarded_for` lists
+a header that marks the request as coming from a trusted proxy. Without it every
+client appears with the proxy's address, which breaks per-client IP limits and
+logs.
+
+```hcl
+resource "threexui_inbound" "ws_behind_proxy" {
+  listen   = "127.0.0.1" # reachable only through the local reverse proxy
+  port     = 10000
+  protocol = "vless"
+  enable   = true
+  remark   = "VLESS WS behind nginx"
+
+  vless_settings {
+    decryption = "none"
+  }
+
+  stream_settings {
+    network  = "ws"
+    security = "none"
+    ws_settings {
+      path = "/ws"
+    }
+    sockopt {
+      trusted_x_forwarded_for = ["X-Forwarded-For"]
+    }
+  }
+}
+```
+
+~> **Security** The listed headers are only a presence check: whenever one of
+them is present, xray takes the client IP from the **first** `X-Forwarded-For`
+entry, never from the listed header itself. The result is only trustworthy when
+the inbound is reachable solely through your proxy (`listen = "127.0.0.1"` or a
+firewall) **and** that proxy overwrites `X-Forwarded-For` with the peer address
+(nginx: `proxy_set_header X-Forwarded-For $remote_addr;`, not
+`$proxy_add_x_forwarded_for`). Cloudflare appends to a client-supplied
+`X-Forwarded-For`, so behind Cloudflare alone the first entry can be forged —
+listing `CF-Connecting-IP` does not change which value xray reads.
+
 ### HTTP Proxy with Authentication
 
 ```hcl
@@ -574,13 +617,49 @@ Unlike AmneziaWG, the panel generates nothing here: the `certificate` / `private
   - `port` (Optional, Number)
   - `remark` (Optional, String)
   - `force_tls` (Optional, String)
-- `sockopt` (Optional, Block) - Socket options.
-  - `mark` (Optional, Number)
-  - `tcp_keep_alive_interval` (Optional, Number)
-  - `tcp_no_delay` (Optional, Boolean)
-  - `tfo_enable` (Optional, Boolean)
-  - `tproxy` (Optional, String)
-  - `domain_strategy` (Optional, String)
+- `sockopt` (Optional, Block) - Socket options (xray `sockopt`). See [`sockopt`](#sockopt-optional-block) below.
+
+#### `sockopt` (Optional, Block)
+
+Socket options written to `streamSettings.sockopt`. The block is shared with
+`threexui_xray_outbounds`, so a few options apply only to one side; xray-core
+ignores them on the other. Removing the block drops `sockopt` from the inbound.
+Every attribute is `Optional + Computed`: omitting it keeps the current value, so
+clear a value explicitly with `0`, `false`, `""` or `[]` (`off` / `none` for
+`tproxy` / `address_port_strategy`).
+
+- `trusted_x_forwarded_for` (Optional, List of String) - Header names that mark a request as coming from a trusted reverse proxy or CDN (e.g. `["X-Forwarded-For"]`, `["CF-Connecting-IP"]`). When one of them is present, xray takes the client IP from the first `X-Forwarded-For` entry; since xray-core v26.6.22 (3x-ui v3.4.0) `X-Forwarded-For` is ignored otherwise. Honoured by `ws`, `httpupgrade`, `xhttp` and `grpc`. See the security note in the example above.
+- `accept_proxy_protocol` (Optional, Boolean) - Accept a PROXY protocol v1/v2 header on the listener (any transport except mKCP). `tcp_settings.accept_proxy_protocol` is the transport-level variant of the same switch.
+- `v6_only` (Optional, Boolean) - Make a `::` listener IPv6-only (`IPV6_V6ONLY`) so an IPv4 inbound can use the same port. Written as `v6only`, the spelling 3x-ui's port-conflict check reads.
+- `mark` (Optional, Number) - Linux `SO_MARK` for policy routing (needs `CAP_NET_ADMIN`). `0` leaves it unset.
+- `tproxy` (Optional, String) - Transparent proxy mode: `off`, `redirect` or `tproxy` (Linux, needs `CAP_NET_ADMIN`).
+- `tfo_enable` (Optional, Boolean) - TCP Fast Open (`tcpFastOpen`).
+- `tcp_mptcp` (Optional, Boolean) - Multipath TCP.
+- `tcp_keep_alive_interval` (Optional, Number) - Keep-alive probe interval in seconds (`TCP_KEEPINTVL`). `0` keeps the OS default; a negative value disables keep-alive.
+- `tcp_keep_alive_idle` (Optional, Number) - Keep-alive idle time in seconds (`TCP_KEEPIDLE`). `0` keeps the OS default; a negative value disables keep-alive.
+- `tcp_user_timeout` (Optional, Number) - `TCP_USER_TIMEOUT` in milliseconds. `0` keeps the OS default.
+- `tcp_max_seg` (Optional, Number) - `TCP_MAXSEG` (MSS) in bytes. `0` keeps the OS default.
+- `tcp_window_clamp` (Optional, Number) - `TCP_WINDOW_CLAMP` in bytes. `0` keeps the OS default; small values throttle throughput.
+- `tcp_congestion` (Optional, String) - Congestion control algorithm (`bbr`, `cubic`, `reno`, …); it must be available in the panel host's kernel. Written as `tcpcongestion`, the spelling the 3x-ui form uses.
+- `interface` (Optional, String) - Bind sockets to a network interface (e.g. `eth0`).
+- `domain_strategy` (Optional, String) - Outbound only. How the dialer resolves a domain: `AsIs`, `UseIP`, `UseIPv6v4`, `UseIPv6`, `UseIPv4v6`, `UseIPv4`, `ForceIP`, `ForceIPv6v4`, `ForceIPv6`, `ForceIPv4v6`, `ForceIPv4`.
+- `dialer_proxy` (Optional, String) - Outbound only. Tag of another outbound to dial through.
+- `address_port_strategy` (Optional, String) - Outbound only. Take the target address and/or port from DNS SRV/TXT records: `none`, `SrvPortOnly`, `SrvAddressOnly`, `SrvPortAndAddress`, `TxtPortOnly`, `TxtAddressOnly`, `TxtPortAndAddress`.
+- `penetrate` (Optional, Boolean) - Outbound only (XHTTP). Reuse these options for the `downloadSettings` connection.
+- `happy_eyeballs` (Optional, Attribute) - Outbound only. RFC 8305 Happy Eyeballs; see [`threexui_xray_outbounds`](xray_outbounds.md).
+- `custom_sockopt` (Optional, Attribute List) - Raw `setsockopt(2)` calls applied to every socket. See below.
+- `tcp_no_delay` (Optional, Boolean, **Deprecated**) - xray-core removed `tcpNoDelay` in v24.12.31 and ignores it; the attribute has no effect.
+
+~> **Note** `happy_eyeballs` and `custom_sockopt` are nested *attributes*, not blocks — use the assignment syntax: `custom_sockopt = [{ opt = "13", type = "str", value = "bbr" }]`.
+
+##### `custom_sockopt` (Optional, Attribute List)
+
+- `opt` (Required, String) - Option name as a decimal number (e.g. `13` = `TCP_CONGESTION` on Linux).
+- `type` (Required, String) - `int` or `str`.
+- `value` (Required, String) - Option value; a decimal integer when `type = "int"` (checked at plan time — xray-core would silently use `0`).
+- `level` (Optional, String) - Option level as a decimal number (`6` = `IPPROTO_TCP`, `1` = `SOL_SOCKET`). Unset means `6`.
+- `system` (Optional, String) - Apply only on this OS (`linux`, `windows`, `darwin`, …). Unset applies everywhere.
+- `network` (Optional, String) - Apply only to sockets whose network starts with this prefix (`tcp`, `udp`, `tcp6`, …). Unset applies to all.
 
 ### `sniffing` Block
 

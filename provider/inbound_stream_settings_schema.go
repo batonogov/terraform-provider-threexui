@@ -150,15 +150,6 @@ type InboundHysteriaStreamSettingsModel struct {
 	UDPIdleTimeout types.Int64  `tfsdk:"udp_idle_timeout"`
 }
 
-type InboundSockoptModel struct {
-	Mark                 types.Int64  `tfsdk:"mark"`
-	TCPKeepAliveInterval types.Int64  `tfsdk:"tcp_keep_alive_interval"`
-	TCPNoDelay           types.Bool   `tfsdk:"tcp_no_delay"`
-	TFOEnable            types.Bool   `tfsdk:"tfo_enable"`
-	Tproxy               types.String `tfsdk:"tproxy"`
-	DomainStrategy       types.String `tfsdk:"domain_strategy"`
-}
-
 // ---------------------------------------------------------------------------
 // Schema
 // ---------------------------------------------------------------------------
@@ -724,49 +715,7 @@ func inboundStreamSettingsBlockSchema() schema.SingleNestedBlock {
 					},
 				},
 			},
-			"sockopt": schema.SingleNestedBlock{
-				Description: "Socket options.",
-				Attributes: map[string]schema.Attribute{
-					"mark": schema.Int64Attribute{
-						Optional: true, Computed: true,
-						PlanModifiers: []planmodifier.Int64{
-							int64planmodifier.UseStateForUnknown(),
-						},
-					},
-					"tcp_keep_alive_interval": schema.Int64Attribute{
-						Optional: true, Computed: true,
-						PlanModifiers: []planmodifier.Int64{
-							int64planmodifier.UseStateForUnknown(),
-						},
-					},
-					"tcp_no_delay": schema.BoolAttribute{
-						Optional: true, Computed: true,
-						PlanModifiers: []planmodifier.Bool{
-							boolplanmodifier.UseStateForUnknown(),
-						},
-					},
-					"tfo_enable": schema.BoolAttribute{
-						Optional: true, Computed: true,
-						PlanModifiers: []planmodifier.Bool{
-							boolplanmodifier.UseStateForUnknown(),
-						},
-					},
-					"tproxy": schema.StringAttribute{
-						Optional: true, Computed: true,
-						Validators: tproxyValidators(),
-						PlanModifiers: []planmodifier.String{
-							stringplanmodifier.UseStateForUnknown(),
-						},
-					},
-					"domain_strategy": schema.StringAttribute{
-						Optional: true, Computed: true,
-						Validators: domainStrategyValidators(),
-						PlanModifiers: []planmodifier.String{
-							stringplanmodifier.UseStateForUnknown(),
-						},
-					},
-				},
-			},
+			"sockopt": sockoptBlockSchema(),
 		},
 	}
 }
@@ -1135,32 +1084,6 @@ func expandHysteriaStreamSettingsFromModel(m *InboundHysteriaStreamSettingsModel
 	}
 	if !m.UDPIdleTimeout.IsNull() && !m.UDPIdleTimeout.IsUnknown() {
 		out["udp_idle_timeout"] = int(m.UDPIdleTimeout.ValueInt64())
-	}
-	return out
-}
-
-func expandSockoptFromModel(m *InboundSockoptModel) map[string]any {
-	if m == nil {
-		return nil
-	}
-	out := map[string]any{}
-	if !m.Mark.IsNull() && !m.Mark.IsUnknown() {
-		out["mark"] = int(m.Mark.ValueInt64())
-	}
-	if !m.TCPKeepAliveInterval.IsNull() && !m.TCPKeepAliveInterval.IsUnknown() {
-		out["tcp_keep_alive_interval"] = int(m.TCPKeepAliveInterval.ValueInt64())
-	}
-	if !m.TCPNoDelay.IsNull() && !m.TCPNoDelay.IsUnknown() {
-		out["tcp_no_delay"] = m.TCPNoDelay.ValueBool()
-	}
-	if !m.TFOEnable.IsNull() && !m.TFOEnable.IsUnknown() {
-		out["tfo_enable"] = m.TFOEnable.ValueBool()
-	}
-	if !m.Tproxy.IsNull() && !m.Tproxy.IsUnknown() {
-		out["tproxy"] = m.Tproxy.ValueString()
-	}
-	if !m.DomainStrategy.IsNull() && !m.DomainStrategy.IsUnknown() {
-		out["domain_strategy"] = m.DomainStrategy.ValueString()
 	}
 	return out
 }
@@ -1672,41 +1595,6 @@ func flattenHysteriaStreamSettingsToModel(data map[string]any) *InboundHysteriaS
 		m.UDPIdleTimeout = types.Int64Value(int64(intValue(v)))
 	} else {
 		m.UDPIdleTimeout = types.Int64Null()
-	}
-	return m
-}
-
-func flattenSockoptToModel(data map[string]any) *InboundSockoptModel {
-	m := &InboundSockoptModel{}
-	if v, ok := data["mark"]; ok {
-		m.Mark = types.Int64Value(int64(intValue(v)))
-	} else {
-		m.Mark = types.Int64Null()
-	}
-	if v, ok := data["tcp_keep_alive_interval"]; ok {
-		m.TCPKeepAliveInterval = types.Int64Value(int64(intValue(v)))
-	} else {
-		m.TCPKeepAliveInterval = types.Int64Null()
-	}
-	if v, ok := data["tcp_no_delay"].(bool); ok {
-		m.TCPNoDelay = types.BoolValue(v)
-	} else {
-		m.TCPNoDelay = types.BoolNull()
-	}
-	if v, ok := data["tfo_enable"].(bool); ok {
-		m.TFOEnable = types.BoolValue(v)
-	} else {
-		m.TFOEnable = types.BoolNull()
-	}
-	if v, ok := data["tproxy"].(string); ok && v != "" {
-		m.Tproxy = types.StringValue(v)
-	} else {
-		m.Tproxy = types.StringNull()
-	}
-	if v, ok := data["domain_strategy"].(string); ok && v != "" {
-		m.DomainStrategy = types.StringValue(v)
-	} else {
-		m.DomainStrategy = types.StringNull()
 	}
 	return m
 }

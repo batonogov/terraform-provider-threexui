@@ -3,6 +3,7 @@ package provider
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -963,50 +964,157 @@ func expandSockopt(list []any) map[string]any {
 		return nil
 	}
 	out := map[string]any{}
-	if v, ok := item["mark"]; ok {
-		if n := intValue(v); n != 0 {
-			out["mark"] = n
+	for snake, wire := range sockoptIntWireKeys {
+		if v, ok := item[snake]; ok {
+			out[wire] = int64Value(v)
 		}
 	}
-	if v, ok := item["tcp_keep_alive_interval"]; ok {
-		if n := intValue(v); n != 0 {
-			out["tcpKeepAliveInterval"] = n
+	for snake, wire := range sockoptBoolWireKeys {
+		if v, ok := item[snake]; ok {
+			out[wire] = boolValue(v)
 		}
 	}
-	if v, ok := item["tcp_no_delay"]; ok {
-		out["tcpNoDelay"] = boolValue(v)
+	for snake, wire := range sockoptStringWireKeys {
+		if v, ok := item[snake].(string); ok {
+			out[wire] = v
+		}
 	}
-	if v, ok := item["tfo_enable"]; ok {
-		out["tcpFastOpen"] = boolValue(v)
+	for snake, wire := range sockoptEnumWireKeys {
+		if v, ok := item[snake].(string); ok && v != "" {
+			out[wire] = v
+		}
 	}
-	if v, ok := item["tproxy"].(string); ok && v != "" {
-		out["tproxy"] = v
+	if v, ok := item["trusted_x_forwarded_for"].([]any); ok {
+		out["trustedXForwardedFor"] = v
 	}
-	if v, ok := item["domain_strategy"].(string); ok && v != "" {
-		out["domainStrategy"] = v
+	if v, ok := item["happy_eyeballs"].(map[string]any); ok {
+		he := map[string]any{}
+		for snake, wire := range sockoptHappyEyeballsWireKeys {
+			if val, ok := v[snake]; ok {
+				he[wire] = val
+			}
+		}
+		out["happyEyeballs"] = he
+	}
+	if v, ok := item["custom_sockopt"].([]any); ok {
+		// customSockopt keys are identical in snake_case and in xray's JSON.
+		out["customSockopt"] = v
 	}
 	return out
 }
 
+var (
+	sockoptIntWireKeys = map[string]string{
+		"mark":                    "mark",
+		"tcp_keep_alive_interval": "tcpKeepAliveInterval",
+		"tcp_keep_alive_idle":     "tcpKeepAliveIdle",
+		"tcp_user_timeout":        "tcpUserTimeout",
+		"tcp_max_seg":             "tcpMaxSeg",
+		"tcp_window_clamp":        "tcpWindowClamp",
+	}
+	// v6only uses xray's spelling: the 3x-ui port-conflict check
+	// (port_conflict.go) searches for it case-sensitively.
+	sockoptBoolWireKeys = map[string]string{
+		"tcp_no_delay":          "tcpNoDelay",
+		"tfo_enable":            "tcpFastOpen",
+		"tcp_mptcp":             "tcpMptcp",
+		"accept_proxy_protocol": "acceptProxyProtocol",
+		"v6_only":               "v6only",
+		"penetrate":             "penetrate",
+	}
+	// tcpcongestion uses the panel form spelling, the only one the 3x-ui UI shows.
+	sockoptStringWireKeys = map[string]string{
+		"tcp_congestion": "tcpcongestion",
+		"interface":      "interface",
+		"dialer_proxy":   "dialerProxy",
+	}
+	sockoptEnumWireKeys = map[string]string{
+		"tproxy":                "tproxy",
+		"domain_strategy":       "domainStrategy",
+		"address_port_strategy": "addressPortStrategy",
+	}
+	sockoptHappyEyeballsWireKeys = map[string]string{
+		"try_delay_ms":       "tryDelayMs",
+		"prioritize_ipv6":    "prioritizeIPv6",
+		"interleave":         "interleave",
+		"max_concurrent_try": "maxConcurrentTry",
+	}
+	// xray decodes JSON case-insensitively, so stored configs carry either
+	// spelling; xray's canonical one is read first.
+	sockoptWireAliases = map[string][]string{
+		"tcp_congestion": {"tcpCongestion", "tcpcongestion"},
+		"v6_only":        {"v6only", "V6Only"},
+	}
+)
+
 func flattenSockopt(in map[string]any) map[string]any {
 	out := map[string]any{}
-	if v, ok := in["mark"]; ok {
-		out["mark"] = intValue(v)
+	for snake, wire := range sockoptIntWireKeys {
+		if v, ok := in[wire]; ok {
+			out[snake] = int64Value(v)
+		}
 	}
-	if v, ok := in["tcpKeepAliveInterval"]; ok {
-		out["tcp_keep_alive_interval"] = intValue(v)
+	for snake, wire := range sockoptBoolWireKeys {
+		if v, ok := in[wire].(bool); ok {
+			out[snake] = v
+		}
 	}
-	if v, ok := in["tcpNoDelay"].(bool); ok {
-		out["tcp_no_delay"] = v
+	for snake, wire := range sockoptStringWireKeys {
+		if v, ok := in[wire].(string); ok {
+			out[snake] = v
+		}
 	}
-	if v, ok := in["tcpFastOpen"].(bool); ok {
-		out["tfo_enable"] = v
+	for snake, wire := range sockoptEnumWireKeys {
+		if v, ok := in[wire].(string); ok {
+			out[snake] = v
+		}
 	}
-	if v, ok := in["tproxy"].(string); ok {
-		out["tproxy"] = v
+	for snake, aliases := range sockoptWireAliases {
+		delete(out, snake)
+		for _, wire := range aliases {
+			if v, ok := in[wire]; ok {
+				out[snake] = v
+				break
+			}
+		}
 	}
-	if v, ok := in["domainStrategy"].(string); ok {
-		out["domain_strategy"] = v
+	if v, ok := in["trustedXForwardedFor"].([]any); ok {
+		out["trusted_x_forwarded_for"] = v
+	}
+	if v, ok := in["happyEyeballs"].(map[string]any); ok {
+		he := map[string]any{}
+		for snake, wire := range sockoptHappyEyeballsWireKeys {
+			if val, ok := v[wire]; ok {
+				he[snake] = val
+			}
+		}
+		out["happy_eyeballs"] = he
+	}
+	if v, ok := in["customSockopt"].([]any); ok {
+		out["custom_sockopt"] = flattenCustomSockoptWire(v)
+	}
+	return out
+}
+
+// flattenCustomSockoptWire turns numeric fields into strings: the 3x-ui form
+// allows numbers, but xray-core only accepts strings.
+func flattenCustomSockoptWire(items []any) []any {
+	out := make([]any, 0, len(items))
+	for _, item := range items {
+		entry, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		normalized := map[string]any{}
+		for _, key := range []string{"system", "network", "level", "opt", "type", "value"} {
+			switch v := entry[key].(type) {
+			case string:
+				normalized[key] = v
+			case float64:
+				normalized[key] = strconv.FormatFloat(v, 'f', -1, 64)
+			}
+		}
+		out = append(out, normalized)
 	}
 	return out
 }
