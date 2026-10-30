@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"regexp"
 	"strconv"
 	"testing"
 
@@ -56,6 +57,13 @@ func TestAccInboundSockopt(t *testing.T) {
         value = "1"
       }]
 `)
+	omitted := testAccInboundSockoptConfig(`
+      tcp_keep_alive_idle = 600
+`)
+	// idle = 600 stays in state, so only the plan-time check can see the clash.
+	oppositeKeepAlive := testAccInboundSockoptConfig(`
+      tcp_keep_alive_interval = -1
+`)
 	cleared := testAccInboundSockoptConfig(`
       trusted_x_forwarded_for = []
       accept_proxy_protocol   = false
@@ -104,6 +112,31 @@ func TestAccInboundSockopt(t *testing.T) {
 				Config:             full,
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: false,
+			},
+			{
+				Config: omitted,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(name, "stream_settings.sockopt.tcp_keep_alive_idle", "600"),
+					resource.TestCheckResourceAttr(name, "stream_settings.sockopt.tcp_congestion", "cubic"),
+					testAccCheckInboundStoredSockopt(name, map[string]any{
+						"trustedXForwardedFor": []any{"X-Forwarded-For", "CF-Connecting-IP"},
+						"acceptProxyProtocol":  false,
+						"tcpFastOpen":          true,
+						"mark":                 float64(0),
+						"tcpKeepAliveInterval": float64(30),
+						"tcpKeepAliveIdle":     float64(600),
+						"tcpUserTimeout":       float64(10000),
+						"tcpcongestion":        "cubic",
+						"customSockopt": []any{map[string]any{
+							"level": "1", "opt": "9", "type": "int", "value": "1",
+						}},
+					}),
+				),
+			},
+			{
+				Config:      oppositeKeepAlive,
+				PlanOnly:    true,
+				ExpectError: regexp.MustCompile(`Invalid TCP keep-alive settings`),
 			},
 			{
 				Config: cleared,

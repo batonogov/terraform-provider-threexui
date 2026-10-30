@@ -154,7 +154,7 @@ server. An omitted block is persisted from state on unrelated updates, and is
   - `min_version` (String, Optional) - Minimum TLS version (e.g. `1.2`).
   - `max_version` (String, Optional) - Maximum TLS version (e.g. `1.3`).
   - `cipher` (String, Optional) - TLS cipher suite.
-- `sockopt` (Block, Optional, Max: 1) - Socket options (xray `sockopt`). The block is shared with `threexui_inbound`; omitting an attribute keeps its current value, so clear one explicitly with `0`, `false`, `""` or `[]`.
+- `sockopt` (Block, Optional, Max: 1) - Socket options (xray `sockopt`). The block is shared with `threexui_inbound`; omitting an attribute keeps its current value (matched to state by the outbound `tag`, so it survives a reorder but not a tag rename), so clear one explicitly with `0`, `false`, `""` or `[]`.
   - `dialer_proxy` (String, Optional) - Tag of another outbound to dial through (proxy chaining). 3x-ui v3.8.0+ migrates the removed `proxySettings.tag` here.
   - `domain_strategy` (String, Optional) - How the dialer resolves a domain target: `AsIs`, `UseIP`, `UseIPv6v4`, `UseIPv6`, `UseIPv4v6`, `UseIPv4`, `ForceIP`, `ForceIPv6v4`, `ForceIPv6`, `ForceIPv4v6`, `ForceIPv4`. xray-core prefers this over the deprecated freedom `domain_strategy`.
   - `happy_eyeballs` (Attribute, Optional) - RFC 8305 Happy Eyeballs for TCP targets that resolve to several IPs. Needs a resolving `domain_strategy`; inactive together with `dialer_proxy`.
@@ -164,13 +164,13 @@ server. An omitted block is persisted from state on unrelated updates, and is
     - `max_concurrent_try` (Int, Optional) - Maximum concurrent attempts (xray default `4`). `0` disables Happy Eyeballs.
   - `address_port_strategy` (String, Optional) - Take the target address and/or port from DNS SRV/TXT records: `none`, `SrvPortOnly`, `SrvAddressOnly`, `SrvPortAndAddress`, `TxtPortOnly`, `TxtAddressOnly`, `TxtPortAndAddress`. xray-core v26.9.8+ (3x-ui v3.8.0+) rejects it on `freedom` outbounds.
   - `penetrate` (Bool, Optional) - XHTTP only: reuse these options for the `downloadSettings` connection.
-  - `interface` (String, Optional) - Bind outgoing sockets to a network interface (e.g. `wg0`).
+  - `interface` (String, Optional) - Bind outgoing sockets to a network interface (e.g. `wg0`) on Linux, macOS and Windows.
   - `mark` (Int, Optional) - Linux `SO_MARK` for policy routing (needs `CAP_NET_ADMIN`). `0` leaves it unset.
   - `tproxy` (String, Optional) - `off`, `redirect` or `tproxy` (sets `IP_TRANSPARENT` on the dialer socket).
   - `tfo_enable` (Bool, Optional) - TCP Fast Open.
   - `tcp_mptcp` (Bool, Optional) - Multipath TCP.
-  - `tcp_keep_alive_interval` (Int, Optional) - Keep-alive probe interval in seconds. `0` keeps the OS default; negative disables keep-alive.
-  - `tcp_keep_alive_idle` (Int, Optional) - Keep-alive idle time in seconds. `0` keeps the OS default; negative disables keep-alive.
+  - `tcp_keep_alive_interval` (Int, Optional) - Keep-alive probe interval in seconds. `0` uses the xray-core default (45 s); negative disables keep-alive.
+  - `tcp_keep_alive_idle` (Int, Optional) - Keep-alive idle time in seconds. `0` uses the xray-core default (45 s); negative disables keep-alive. xray-core refuses to dial when the two keep-alive values have opposite signs, so the provider rejects that at plan time, including a value kept from state.
   - `tcp_user_timeout` (Int, Optional) - `TCP_USER_TIMEOUT` in milliseconds. `0` keeps the OS default.
   - `tcp_max_seg` (Int, Optional) - `TCP_MAXSEG` (MSS) in bytes. `0` keeps the OS default.
   - `tcp_window_clamp` (Int, Optional) - `TCP_WINDOW_CLAMP` in bytes. `0` keeps the OS default.

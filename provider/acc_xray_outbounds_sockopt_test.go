@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"regexp"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -61,6 +62,11 @@ func TestAccXrayOutboundsSockopt(t *testing.T) {
           max_concurrent_try = 4
         }
 `)
+	// Review of #480: the outbound list is authoritative in ModifyPlan, which
+	// used to delete every attribute a declared sockopt block omits.
+	omitted := testAccXrayOutboundsSockoptConfig(`
+        tcp_keep_alive_idle = 90
+`)
 	cleared := testAccXrayOutboundsSockoptConfig(`
         dialer_proxy        = ""
         domain_strategy     = "AsIs"
@@ -102,6 +108,35 @@ func TestAccXrayOutboundsSockopt(t *testing.T) {
 				Config:             full,
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: false,
+			},
+			{
+				Config: omitted,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(name, "outbound.2.stream_settings.sockopt.dialer_proxy", "direct"),
+					resource.TestCheckResourceAttr(name, "outbound.2.stream_settings.sockopt.tcp_keep_alive_idle", "90"),
+					testAccCheckXrayOutboundSockopt("data.threexui_xray_config.sockopt", "chained", map[string]any{
+						"dialerProxy":      "direct",
+						"domainStrategy":   "UseIPv4",
+						"tcpKeepAliveIdle": float64(90),
+						"happyEyeballs": map[string]any{
+							"tryDelayMs": float64(250), "prioritizeIPv6": false,
+							"interleave": float64(1), "maxConcurrentTry": float64(4),
+						},
+					}),
+				),
+			},
+			{
+				Config:             omitted,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+			{
+				Config: testAccXrayOutboundsSockoptConfig(`
+        tcp_keep_alive_idle     = -1
+        tcp_keep_alive_interval = 30
+`),
+				PlanOnly:    true,
+				ExpectError: regexp.MustCompile(`Invalid TCP keep-alive settings`),
 			},
 			{
 				Config: cleared,

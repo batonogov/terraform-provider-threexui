@@ -629,19 +629,19 @@ clear a value explicitly with `0`, `false`, `""` or `[]` (`off` / `none` for
 `tproxy` / `address_port_strategy`).
 
 - `trusted_x_forwarded_for` (Optional, List of String) - Header names that mark a request as coming from a trusted reverse proxy or CDN (e.g. `["X-Forwarded-For"]`, `["CF-Connecting-IP"]`). When one of them is present, xray takes the client IP from the first `X-Forwarded-For` entry; since xray-core v26.6.22 (3x-ui v3.4.0) `X-Forwarded-For` is ignored otherwise. Honoured by `ws`, `httpupgrade`, `xhttp` and `grpc`. See the security note in the example above.
-- `accept_proxy_protocol` (Optional, Boolean) - Accept a PROXY protocol v1/v2 header on the listener (any transport except mKCP). `tcp_settings.accept_proxy_protocol` is the transport-level variant of the same switch.
-- `v6_only` (Optional, Boolean) - Make a `::` listener IPv6-only (`IPV6_V6ONLY`) so an IPv4 inbound can use the same port. Written as `v6only`, the spelling 3x-ui's port-conflict check reads.
+- `accept_proxy_protocol` (Optional, Boolean) - Require a PROXY protocol v1/v2 header on stream (TCP or Unix socket) listeners: raw TCP, WebSocket, HTTPUpgrade, gRPC and XHTTP over TCP. UDP-based transports (mKCP, XHTTP/3, Hysteria) ignore it. `tcp_settings.accept_proxy_protocol` is the transport-level variant of the same switch.
+- `v6_only` (Optional, Boolean) - Make a `::` listener IPv6-only (`IPV6_V6ONLY`). Since 3x-ui v3.9.0 the panel's port-conflict check then lets an inbound on a specific IPv4 address (e.g. `203.0.113.10`) use the same port; a `0.0.0.0` or empty `listen` still conflicts. On v3.3.x–v3.8.x the check ignores this option and rejects any second inbound on the port of a wildcard listener. Written as `v6only`, the spelling the port-conflict check reads.
 - `mark` (Optional, Number) - Linux `SO_MARK` for policy routing (needs `CAP_NET_ADMIN`). `0` leaves it unset.
 - `tproxy` (Optional, String) - Transparent proxy mode: `off`, `redirect` or `tproxy` (Linux, needs `CAP_NET_ADMIN`).
 - `tfo_enable` (Optional, Boolean) - TCP Fast Open (`tcpFastOpen`).
 - `tcp_mptcp` (Optional, Boolean) - Multipath TCP.
-- `tcp_keep_alive_interval` (Optional, Number) - Keep-alive probe interval in seconds (`TCP_KEEPINTVL`). `0` keeps the OS default; a negative value disables keep-alive.
-- `tcp_keep_alive_idle` (Optional, Number) - Keep-alive idle time in seconds (`TCP_KEEPIDLE`). `0` keeps the OS default; a negative value disables keep-alive.
+- `tcp_keep_alive_interval` (Optional, Number) - Keep-alive probe interval in seconds (`TCP_KEEPINTVL`). `0` uses the xray-core default: an inbound listener keeps keep-alive off unless `tcp_keep_alive_idle` is positive. A negative value disables keep-alive.
+- `tcp_keep_alive_idle` (Optional, Number) - Keep-alive idle time in seconds (`TCP_KEEPIDLE`). `0` uses the xray-core default: an inbound listener keeps keep-alive off unless `tcp_keep_alive_interval` is positive. A negative value disables keep-alive. xray-core refuses to listen or dial when the two keep-alive values have opposite signs, so the provider rejects that at plan time, including a value kept from state.
 - `tcp_user_timeout` (Optional, Number) - `TCP_USER_TIMEOUT` in milliseconds. `0` keeps the OS default.
 - `tcp_max_seg` (Optional, Number) - `TCP_MAXSEG` (MSS) in bytes. `0` keeps the OS default.
 - `tcp_window_clamp` (Optional, Number) - `TCP_WINDOW_CLAMP` in bytes. `0` keeps the OS default; small values throttle throughput.
 - `tcp_congestion` (Optional, String) - Congestion control algorithm (`bbr`, `cubic`, `reno`, …); it must be available in the panel host's kernel. Written as `tcpcongestion`, the spelling the 3x-ui form uses.
-- `interface` (Optional, String) - Bind sockets to a network interface (e.g. `eth0`).
+- `interface` (Optional, String) - Bind sockets to a network interface (e.g. `eth0`). Mainly an outbound option: on inbounds xray-core applies it only on macOS, and Linux and Windows listeners ignore it.
 - `domain_strategy` (Optional, String) - Outbound only. How the dialer resolves a domain: `AsIs`, `UseIP`, `UseIPv6v4`, `UseIPv6`, `UseIPv4v6`, `UseIPv4`, `ForceIP`, `ForceIPv6v4`, `ForceIPv6`, `ForceIPv4v6`, `ForceIPv4`.
 - `dialer_proxy` (Optional, String) - Outbound only. Tag of another outbound to dial through.
 - `address_port_strategy` (Optional, String) - Outbound only. Take the target address and/or port from DNS SRV/TXT records: `none`, `SrvPortOnly`, `SrvAddressOnly`, `SrvPortAndAddress`, `TxtPortOnly`, `TxtAddressOnly`, `TxtPortAndAddress`.
@@ -654,12 +654,14 @@ clear a value explicitly with `0`, `false`, `""` or `[]` (`off` / `none` for
 
 ##### `custom_sockopt` (Optional, Attribute List)
 
-- `opt` (Required, String) - Option name as a decimal number (e.g. `13` = `TCP_CONGESTION` on Linux).
+- `opt` (Required, String) - Option name as a decimal 32-bit integer (e.g. `13` = `TCP_CONGESTION` on Linux).
 - `type` (Required, String) - `int` or `str`.
-- `value` (Required, String) - Option value; a decimal integer when `type = "int"` (checked at plan time — xray-core would silently use `0`).
-- `level` (Optional, String) - Option level as a decimal number (`6` = `IPPROTO_TCP`, `1` = `SOL_SOCKET`). Unset means `6`.
+- `value` (Required, String) - Option value; a decimal 32-bit integer when `type = "int"`.
+- `level` (Optional, String) - Option level as a decimal 32-bit integer (`6` = `IPPROTO_TCP`, `1` = `SOL_SOCKET` on Linux). Unset means `6`.
 - `system` (Optional, String) - Apply only on this OS (`linux`, `windows`, `darwin`, …). Unset applies everywhere.
 - `network` (Optional, String) - Apply only to sockets whose network starts with this prefix (`tcp`, `udp`, `tcp6`, …). Unset applies to all.
+
+`opt`, `level` and an `int` `value` are range-checked at plan time: xray-core parses them without checking for errors and `setsockopt(2)` takes a 32-bit `int`, so a typo or an out-of-range number would silently set a different option or value.
 
 ### `sniffing` Block
 

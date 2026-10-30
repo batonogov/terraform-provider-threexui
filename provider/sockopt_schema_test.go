@@ -8,7 +8,9 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -265,6 +267,7 @@ func TestCustomSockoptIntValueValidator(t *testing.T) {
 		{"int with decimal value", types.StringValue("int"), types.StringValue("-15"), false},
 		{"int with non-numeric value", types.StringValue("int"), types.StringValue("bbr"), true},
 		{"int with hex value", types.StringValue("int"), types.StringValue("0x10"), true},
+		{"int above int32", types.StringValue("int"), types.StringValue("4294967297"), true},
 		{"str with text value", types.StringValue("str"), types.StringValue("bbr"), false},
 		{"unknown type", types.StringUnknown(), types.StringValue("bbr"), false},
 		{"unknown value", types.StringValue("int"), types.StringUnknown(), false},
@@ -306,11 +309,19 @@ func TestCustomSockoptIntValueValidator(t *testing.T) {
 	}
 }
 
-func TestSockoptDecimalIntValidator(t *testing.T) {
-	cases := map[string]bool{"6": false, "-1": false, "SOL_SOCKET": true, "0x6": true, "": true}
+func TestSockoptInt32StringValidator(t *testing.T) {
+	cases := map[string]bool{
+		"6": false, "-1": false, "2147483647": false, "-2147483648": false,
+		"2147483648": true, "-2147483649": true, "9223372036854775808": true,
+		"SOL_SOCKET": true, "0x6": true, "": true,
+	}
+	v := sockoptInt32StringValidator{}
+	if v.Description(t.Context()) == "" || v.MarkdownDescription(t.Context()) == "" {
+		t.Fatal("validator description must not be empty")
+	}
 	for value, wantErr := range cases {
 		var resp validator.StringResponse
-		sockoptDecimalIntValidator().ValidateString(context.Background(), validator.StringRequest{
+		sockoptInt32StringValidator{}.ValidateString(context.Background(), validator.StringRequest{
 			Path:        path.Root("level"),
 			ConfigValue: types.StringValue(value),
 		}, &resp)
@@ -318,6 +329,72 @@ func TestSockoptDecimalIntValidator(t *testing.T) {
 			t.Errorf("%q: HasError = %t, want %t", value, resp.Diagnostics.HasError(), wantErr)
 		}
 	}
+	for _, v := range []types.String{types.StringNull(), types.StringUnknown()} {
+		var resp validator.StringResponse
+		sockoptInt32StringValidator{}.ValidateString(context.Background(), validator.StringRequest{ConfigValue: v}, &resp)
+		if resp.Diagnostics.HasError() {
+			t.Errorf("%s must not be validated: %v", v, resp.Diagnostics)
+		}
+	}
+}
+
+// xray-core fails every listen/dial when idle*interval is negative in int32
+// arithmetic, so opposite signs and an overflowing product must not plan.
+func TestSockoptKeepAliveValidator(t *testing.T) {
+	cases := []struct {
+		name           string
+		idle, interval types.Int64
+		wantErr        bool
+	}{
+		{"both positive", types.Int64Value(60), types.Int64Value(30), false},
+		{"both negative", types.Int64Value(-1), types.Int64Value(-1), false},
+		{"zero and negative", types.Int64Value(0), types.Int64Value(-1), false},
+		{"negative idle", types.Int64Value(-1), types.Int64Value(30), true},
+		{"negative interval", types.Int64Value(30), types.Int64Value(-1), true},
+		{"int32 overflow", types.Int64Value(65536), types.Int64Value(32768), true},
+		{"out of int32 range", types.Int64Value(1 << 31), types.Int64Value(-1), false},
+		{"null idle", types.Int64Null(), types.Int64Value(-1), false},
+		{"unknown interval", types.Int64Value(-1), types.Int64Unknown(), false},
+	}
+	v := sockoptKeepAliveValidator{}
+	if v.Description(t.Context()) == "" || v.MarkdownDescription(t.Context()) == "" {
+		t.Fatal("validator description must not be empty")
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := nullSockoptModel()
+			m.TCPKeepAliveIdle, m.TCPKeepAliveInterval = tc.idle, tc.interval
+			obj, diags := types.ObjectValueFrom(context.Background(), sockoptAttrTypes(t), m)
+			if diags.HasError() {
+				t.Fatal(diags)
+			}
+			var resp validator.ObjectResponse
+			sockoptKeepAliveValidator{}.ValidateObject(context.Background(), validator.ObjectRequest{
+				Path: path.Root("sockopt"), ConfigValue: obj,
+			}, &resp)
+			if resp.Diagnostics.HasError() != tc.wantErr {
+				t.Fatalf("HasError = %t, want %t: %v", resp.Diagnostics.HasError(), tc.wantErr, resp.Diagnostics)
+			}
+			if tc.wantErr {
+				wantPath := path.Root("sockopt").AtName("tcp_keep_alive_idle")
+				if got := resp.Diagnostics.Errors()[0].(interface{ Path() path.Path }).Path(); !got.Equal(wantPath) {
+					t.Fatalf("error path = %s, want %s", got, wantPath)
+				}
+			}
+		})
+	}
+	var resp validator.ObjectResponse
+	sockoptKeepAliveValidator{}.ValidateObject(context.Background(), validator.ObjectRequest{
+		ConfigValue: types.ObjectNull(sockoptAttrTypes(t)),
+	}, &resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("null sockopt must not be validated: %v", resp.Diagnostics)
+	}
+}
+
+func sockoptAttrTypes(t *testing.T) map[string]attr.Type {
+	t.Helper()
+	return sockoptBlockSchema().Type().(types.ObjectType).AttrTypes
 }
 
 // xray rejects an empty customSockopt entry with "No opt!" and fails the
@@ -336,5 +413,45 @@ func TestSockoptCustomSockopt_SkipsUnusableEntries(t *testing.T) {
 	}
 	if got, want := flattenStreamSettingsToModel(flat).Sockopt.CustomSockopt, customSockoptList(map[string]string{"opt": "4", "type": "int", "value": "60"}); !got.Equal(want) {
 		t.Fatalf("custom_sockopt = %s, want %s", got, want)
+	}
+}
+
+// The config validator cannot see a keep-alive value the plan keeps from state:
+// interval = 30 added next to an omitted idle that state holds at -1.
+func TestInboundResourceModifyPlan_RejectsKeepAliveSignsFromState(t *testing.T) {
+	r := &InboundResource{}
+	inbound := func(remark string, idle, interval types.Int64) tfsdk.Plan {
+		sockopt := nullSockoptModel()
+		sockopt.TCPKeepAliveIdle, sockopt.TCPKeepAliveInterval = idle, interval
+		return inboundResourceFixture(t, r, &InboundResourceModel{
+			ID: types.StringValue("7"), Remark: types.StringValue(remark), Enable: types.BoolValue(true),
+			Port: types.Int64Value(443), Protocol: types.StringValue("vless"),
+			StreamSettings: &InboundStreamSettingsModel{Network: types.StringValue("tcp"), Sockopt: &sockopt},
+		})
+	}
+	state := tfsdk.State(inbound("r", types.Int64Value(-1), types.Int64Null()))
+
+	for _, tc := range []struct {
+		name     string
+		interval types.Int64
+		wantErr  bool
+	}{
+		{"opposite signs", types.Int64Value(30), true},
+		{"same sign", types.Int64Value(-1), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			plan := inbound("r2", types.Int64Value(-1), tc.interval)
+			resp := &resource.ModifyPlanResponse{Plan: plan}
+			r.ModifyPlan(context.Background(), resource.ModifyPlanRequest{Plan: plan, State: state}, resp)
+			if resp.Diagnostics.HasError() != tc.wantErr {
+				t.Fatalf("HasError = %t, want %t: %v", resp.Diagnostics.HasError(), tc.wantErr, resp.Diagnostics)
+			}
+			if tc.wantErr {
+				wantPath := path.Root("stream_settings").AtName("sockopt").AtName("tcp_keep_alive_idle")
+				if got := resp.Diagnostics.Errors()[0].(interface{ Path() path.Path }).Path(); !got.Equal(wantPath) {
+					t.Fatalf("error path = %s, want %s", got, wantPath)
+				}
+			}
+		})
 	}
 }

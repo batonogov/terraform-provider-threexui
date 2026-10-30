@@ -4,13 +4,14 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"regexp"
 	"strconv"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
@@ -64,8 +65,6 @@ var sockoptCustomAttrTypes = map[string]attr.Type{
 	"value":   types.StringType,
 }
 
-var sockoptDecimalIntRegexp = regexp.MustCompile(`^-?\d+$`)
-
 // ---------------------------------------------------------------------------
 // Schema
 // ---------------------------------------------------------------------------
@@ -77,6 +76,7 @@ func sockoptBlockSchema() schema.SingleNestedBlock {
 	return schema.SingleNestedBlock{
 		Description: "Socket options (xray `sockopt`). Removing the block drops `sockopt` from the stream settings. " +
 			"Omitting an attribute keeps its current value; clear it with `0`, `false`, `\"\"` or `[]`.",
+		Validators: []validator.Object{sockoptKeepAliveValidator{}},
 		Attributes: map[string]schema.Attribute{
 			"mark": schema.Int64Attribute{
 				Optional: true, Computed: true,
@@ -88,16 +88,20 @@ func sockoptBlockSchema() schema.SingleNestedBlock {
 			},
 			"tcp_keep_alive_interval": schema.Int64Attribute{
 				Optional: true, Computed: true,
-				Description: "TCP keep-alive probe interval in seconds (TCP_KEEPINTVL). `0` keeps the OS default; a negative value disables keep-alive.",
-				Validators:  []validator.Int64{int32Range},
+				Description: "TCP keep-alive probe interval in seconds (TCP_KEEPINTVL). `0` uses the xray-core default: 45 s on outbounds; " +
+					"on inbounds keep-alive stays off unless `tcp_keep_alive_idle` is positive. A negative value disables keep-alive. " +
+					"Must not have the opposite sign of `tcp_keep_alive_idle`.",
+				Validators: []validator.Int64{int32Range},
 				PlanModifiers: []planmodifier.Int64{
 					int64planmodifier.UseStateForUnknown(),
 				},
 			},
 			"tcp_keep_alive_idle": schema.Int64Attribute{
 				Optional: true, Computed: true,
-				Description: "TCP keep-alive idle time in seconds (TCP_KEEPIDLE). `0` keeps the OS default; a negative value disables keep-alive.",
-				Validators:  []validator.Int64{int32Range},
+				Description: "TCP keep-alive idle time in seconds (TCP_KEEPIDLE). `0` uses the xray-core default: 45 s on outbounds; " +
+					"on inbounds keep-alive stays off unless `tcp_keep_alive_interval` is positive. A negative value disables keep-alive. " +
+					"Must not have the opposite sign of `tcp_keep_alive_interval`.",
+				Validators: []validator.Int64{int32Range},
 				PlanModifiers: []planmodifier.Int64{
 					int64planmodifier.UseStateForUnknown(),
 				},
@@ -173,7 +177,8 @@ func sockoptBlockSchema() schema.SingleNestedBlock {
 			},
 			"accept_proxy_protocol": schema.BoolAttribute{
 				Optional: true, Computed: true,
-				Description: "Inbound only. Accept a PROXY protocol v1/v2 header on this listener (any transport except mKCP).",
+				Description: "Inbound only. Require a PROXY protocol v1/v2 header on stream (TCP or Unix socket) listeners: raw TCP, " +
+					"WebSocket, HTTPUpgrade, gRPC and XHTTP over TCP. UDP-based transports (mKCP, XHTTP/3, Hysteria) ignore it.",
 				PlanModifiers: []planmodifier.Bool{
 					boolplanmodifier.UseStateForUnknown(),
 				},
@@ -193,14 +198,17 @@ func sockoptBlockSchema() schema.SingleNestedBlock {
 			},
 			"v6_only": schema.BoolAttribute{
 				Optional: true, Computed: true,
-				Description: "Inbound only. Make a `::` listener IPv6-only (IPV6_V6ONLY) so an IPv4 inbound can share the port.",
+				Description: "Inbound only. Make a `::` listener IPv6-only (IPV6_V6ONLY). Since 3x-ui v3.9.0 the panel's port-conflict " +
+					"check then lets an inbound on a specific IPv4 address share the port (a `0.0.0.0` or empty listen still conflicts); " +
+					"v3.3.x-v3.8.x panels reject such an inbound regardless.",
 				PlanModifiers: []planmodifier.Bool{
 					boolplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"interface": schema.StringAttribute{
 				Optional: true, Computed: true,
-				Description: "Bind sockets to this network interface (e.g. `eth0`, `wg0`). `\"\"` clears it.",
+				Description: "Bind outgoing sockets to this network interface (e.g. `eth0`, `wg0`). On inbounds xray-core applies it " +
+					"only on macOS; Linux and Windows listeners ignore it. `\"\"` clears it.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
@@ -296,13 +304,13 @@ func sockoptBlockSchema() schema.SingleNestedBlock {
 						},
 						"level": schema.StringAttribute{
 							Optional:    true,
-							Description: "Option level as a decimal number (`6` = IPPROTO_TCP, `1` = SOL_SOCKET). Unset means `6`.",
-							Validators:  []validator.String{sockoptDecimalIntValidator()},
+							Description: "Option level as a decimal 32-bit integer (`6` = IPPROTO_TCP, `1` = SOL_SOCKET on Linux). Unset means `6`.",
+							Validators:  []validator.String{sockoptInt32StringValidator{}},
 						},
 						"opt": schema.StringAttribute{
 							Required:    true,
-							Description: "Option name as a decimal number (e.g. `13` = TCP_CONGESTION on Linux).",
-							Validators:  []validator.String{sockoptDecimalIntValidator()},
+							Description: "Option name as a decimal 32-bit integer (e.g. `13` = TCP_CONGESTION on Linux).",
+							Validators:  []validator.String{sockoptInt32StringValidator{}},
 						},
 						"type": schema.StringAttribute{
 							Required:    true,
@@ -311,7 +319,7 @@ func sockoptBlockSchema() schema.SingleNestedBlock {
 						},
 						"value": schema.StringAttribute{
 							Required:    true,
-							Description: "Option value; a decimal integer when `type = \"int\"`.",
+							Description: "Option value; a decimal 32-bit integer when `type = \"int\"`.",
 						},
 					},
 				},
@@ -320,23 +328,43 @@ func sockoptBlockSchema() schema.SingleNestedBlock {
 	}
 }
 
-func sockoptDecimalIntValidator() validator.String {
-	return stringvalidator.RegexMatches(sockoptDecimalIntRegexp, "must be a decimal integer")
+// xray-core parses level, opt and an int value with strconv.Atoi, ignoring the
+// error, and setsockopt(2) takes them as a C int: anything outside int32 is
+// silently replaced or truncated instead of failing.
+func validSockoptInt32(s string) bool {
+	_, err := strconv.ParseInt(s, 10, 32)
+	return err == nil
+}
+
+type sockoptInt32StringValidator struct{}
+
+func (sockoptInt32StringValidator) Description(context.Context) string {
+	return fmt.Sprintf("must be a decimal integer between %d and %d", math.MinInt32, math.MaxInt32)
+}
+
+func (v sockoptInt32StringValidator) MarkdownDescription(ctx context.Context) string {
+	return v.Description(ctx)
+}
+
+func (v sockoptInt32StringValidator) ValidateString(ctx context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() || validSockoptInt32(req.ConfigValue.ValueString()) {
+		return
+	}
+	resp.Diagnostics.AddAttributeError(req.Path, "Invalid custom_sockopt value",
+		fmt.Sprintf("%q %s.", req.ConfigValue.ValueString(), v.Description(ctx)))
 }
 
 type customSockoptIntValueValidator struct{}
 
 func (customSockoptIntValueValidator) Description(context.Context) string {
-	return `value must be a decimal integer when type is "int"`
+	return fmt.Sprintf(`value must be a decimal integer between %d and %d when type is "int"`, math.MinInt32, math.MaxInt32)
 }
 
 func (v customSockoptIntValueValidator) MarkdownDescription(ctx context.Context) string {
 	return v.Description(ctx)
 }
 
-// xray-core calls strconv.Atoi without checking the error, so a typo in value
-// silently becomes setsockopt(..., 0).
-func (customSockoptIntValueValidator) ValidateObject(_ context.Context, req validator.ObjectRequest, resp *validator.ObjectResponse) {
+func (v customSockoptIntValueValidator) ValidateObject(ctx context.Context, req validator.ObjectRequest, resp *validator.ObjectResponse) {
 	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
 		return
 	}
@@ -346,10 +374,56 @@ func (customSockoptIntValueValidator) ValidateObject(_ context.Context, req vali
 	if typ.IsNull() || typ.IsUnknown() || typ.ValueString() != "int" || value.IsNull() || value.IsUnknown() {
 		return
 	}
-	if _, err := strconv.ParseInt(value.ValueString(), 10, 64); err != nil {
+	if !validSockoptInt32(value.ValueString()) {
 		resp.Diagnostics.AddAttributeError(req.Path.AtName("value"), "Invalid custom_sockopt value",
-			fmt.Sprintf("value %q must be a decimal integer when type is \"int\".", value.ValueString()))
+			fmt.Sprintf("%q: %s.", value.ValueString(), v.Description(ctx)))
 	}
+}
+
+// sockoptKeepAliveValidator checks the configuration only; both resources'
+// ModifyPlan repeat the check for a value the plan keeps from state.
+type sockoptKeepAliveValidator struct{}
+
+func (sockoptKeepAliveValidator) Description(context.Context) string {
+	return "tcp_keep_alive_idle and tcp_keep_alive_interval must not have opposite signs"
+}
+
+func (v sockoptKeepAliveValidator) MarkdownDescription(ctx context.Context) string {
+	return v.Description(ctx)
+}
+
+func (sockoptKeepAliveValidator) ValidateObject(_ context.Context, req validator.ObjectRequest, resp *validator.ObjectResponse) {
+	validateSockoptKeepAliveObject(req.ConfigValue, req.Path, &resp.Diagnostics)
+}
+
+func validateSockoptKeepAliveObject(sockopt types.Object, p path.Path, diags *diag.Diagnostics) {
+	if sockopt.IsNull() || sockopt.IsUnknown() {
+		return
+	}
+	idle, _ := sockopt.Attributes()["tcp_keep_alive_idle"].(types.Int64)
+	interval, _ := sockopt.Attributes()["tcp_keep_alive_interval"].(types.Int64)
+	validateSockoptKeepAlive(idle, interval, p, diags)
+}
+
+func validateSockoptKeepAlive(idle, interval types.Int64, p path.Path, diags *diag.Diagnostics) {
+	if idle.IsNull() || idle.IsUnknown() || interval.IsNull() || interval.IsUnknown() {
+		return
+	}
+	a, b := idle.ValueInt64(), interval.ValueInt64()
+	// Out-of-range values are the int32 attribute validators' to report.
+	if a < math.MinInt32 || a > math.MaxInt32 || b < math.MinInt32 || b > math.MaxInt32 {
+		return
+	}
+	// xray-core fails every listen and dial when the int32 product is negative,
+	// overflow included (transport/internet/system_listener.go, system_dialer.go).
+	if int32(a)*int32(b) >= 0 {
+		return
+	}
+	diags.AddAttributeError(p.AtName("tcp_keep_alive_idle"), "Invalid TCP keep-alive settings",
+		fmt.Sprintf("xray-core refuses to listen or dial when tcp_keep_alive_idle (%d) multiplied by "+
+			"tcp_keep_alive_interval (%d) is negative as a 32-bit integer. Give both the same sign "+
+			"(a negative value disables keep-alive) or set one of them to 0; an attribute omitted "+
+			"from the configuration keeps its current value.", a, b))
 }
 
 // ---------------------------------------------------------------------------

@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
@@ -162,6 +163,19 @@ func runXrayOutboundsModifyPlan(
 	planRaw, configRaw, stateRaw tftypes.Value,
 ) tfsdk.Plan {
 	t.Helper()
+	resp := runXrayOutboundsModifyPlanResponse(t, schemaResp, planRaw, configRaw, stateRaw)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected ModifyPlan diagnostics: %v", resp.Diagnostics)
+	}
+	return resp.Plan
+}
+
+func runXrayOutboundsModifyPlanResponse(
+	t *testing.T,
+	schemaResp resource.SchemaResponse,
+	planRaw, configRaw, stateRaw tftypes.Value,
+) *resource.ModifyPlanResponse {
+	t.Helper()
 	outboundsResource := NewXrayOutboundsResource()
 	modifier, ok := outboundsResource.(resource.ResourceWithModifyPlan)
 	if !ok {
@@ -175,10 +189,7 @@ func runXrayOutboundsModifyPlan(
 		Config: tfsdk.Config{Schema: schemaResp.Schema, Raw: configRaw},
 		State:  tfsdk.State{Schema: schemaResp.Schema, Raw: stateRaw},
 	}, resp)
-	if resp.Diagnostics.HasError() {
-		t.Fatalf("unexpected ModifyPlan diagnostics: %v", resp.Diagnostics)
-	}
-	return resp.Plan
+	return resp
 }
 
 func assertXrayOutboundListEqual(t *testing.T, gotPlan tfsdk.Plan, wantConfig tfsdk.Config) {
@@ -404,5 +415,126 @@ func TestXrayOutboundsResource_ModifyPlan_PreservesNullLifecyclePlans(t *testing
 				t.Fatalf("lifecycle plan must remain unchanged\n got: %s\nwant: %s", plan.Raw, test.planRaw)
 			}
 		})
+	}
+}
+
+func xrayOutboundsRawFromModel(t *testing.T, schemaResp resource.SchemaResponse, outbounds ...XrayOutboundEntry) tftypes.Value {
+	t.Helper()
+	p := tfsdk.Plan{Schema: schemaResp.Schema}
+	if diags := p.Set(context.Background(), &XrayOutboundsModel{ID: types.StringValue("xray_outbounds"), Outbound: outbounds}); diags.HasError() {
+		t.Fatalf("building outbounds fixture: %v", diags)
+	}
+	return p.Raw
+}
+
+func sockoptOutbound(tag string, sockopt *InboundSockoptModel) XrayOutboundEntry {
+	return XrayOutboundEntry{
+		Tag:      types.StringValue(tag),
+		Protocol: types.StringValue("trojan"),
+		StreamSettings: &InboundStreamSettingsModel{
+			Network: types.StringValue("tcp"),
+			Sockopt: sockopt,
+		},
+	}
+}
+
+func happyEyeballsObject(tryDelayMs types.Int64) types.Object {
+	return types.ObjectValueMust(sockoptHappyEyeballsAttrTypes, map[string]attr.Value{
+		"try_delay_ms":       tryDelayMs,
+		"prioritize_ipv6":    types.BoolValue(false),
+		"interleave":         types.Int64Value(1),
+		"max_concurrent_try": types.Int64Value(4),
+	})
+}
+
+// Review of #480: the authoritative configured list dropped every attribute a
+// declared sockopt block omits, so removing dialer_proxy while changing the
+// keep-alive deleted dialerProxy (and any panel-managed key) on apply. The
+// reorder proves the state value is matched by tag, not by index.
+func TestXrayOutboundsResource_ModifyPlan_KeepsOmittedSockoptAttributes(t *testing.T) {
+	ctx := context.Background()
+	var schemaResp resource.SchemaResponse
+	NewXrayOutboundsResource().Schema(ctx, resource.SchemaRequest{}, &schemaResp)
+	direct := XrayOutboundEntry{Tag: types.StringValue("direct"), Protocol: types.StringValue("freedom")}
+
+	prior := nullSockoptModel()
+	prior.DialerProxy = types.StringValue("direct")
+	prior.DomainStrategy = types.StringValue("UseIPv4")
+	prior.TCPKeepAliveIdle = types.Int64Value(60)
+	prior.Mark = types.Int64Value(255)
+	prior.Interface = types.StringValue("eth0")
+	prior.HappyEyeballs = happyEyeballsObject(types.Int64Value(250))
+
+	configured := nullSockoptModel()
+	configured.TCPKeepAliveIdle = types.Int64Value(90)
+	configured.Interface = types.StringUnknown()
+	configured.HappyEyeballs = types.ObjectValueMust(sockoptHappyEyeballsAttrTypes, map[string]attr.Value{
+		"try_delay_ms":       types.Int64Value(100),
+		"prioritize_ipv6":    types.BoolNull(),
+		"interleave":         types.Int64Null(),
+		"max_concurrent_try": types.Int64Null(),
+	})
+
+	want := prior
+	want.TCPKeepAliveIdle = types.Int64Value(90)
+	want.Interface = types.StringUnknown()
+	want.HappyEyeballs = happyEyeballsObject(types.Int64Value(100))
+
+	stateRaw := xrayOutboundsRawFromModel(t, schemaResp, sockoptOutbound("chained", &prior), direct)
+	configRaw := xrayOutboundsRawFromModel(t, schemaResp, direct, sockoptOutbound("chained", &configured))
+	pollutedPlanRaw := xrayOutboundsRawFromModel(t, schemaResp, sockoptOutbound("direct", &prior), sockoptOutbound("chained", &configured))
+
+	plan := runXrayOutboundsModifyPlan(t, schemaResp, pollutedPlanRaw, configRaw, stateRaw)
+	var got XrayOutboundsModel
+	if diags := plan.Get(ctx, &got); diags.HasError() {
+		t.Fatalf("reading plan: %v", diags)
+	}
+	if len(got.Outbound) != 2 || got.Outbound[0].StreamSettings != nil {
+		t.Fatalf("direct must stay without stream_settings: %+v", got.Outbound)
+	}
+	assertSockoptModelEqual(t, *got.Outbound[1].StreamSettings.Sockopt, want)
+}
+
+// Removing the whole sockopt block is the documented way to drop it.
+func TestXrayOutboundsResource_ModifyPlan_RemovedSockoptBlockStaysRemoved(t *testing.T) {
+	ctx := context.Background()
+	var schemaResp resource.SchemaResponse
+	NewXrayOutboundsResource().Schema(ctx, resource.SchemaRequest{}, &schemaResp)
+	prior := nullSockoptModel()
+	prior.DialerProxy = types.StringValue("direct")
+
+	stateRaw := xrayOutboundsRawFromModel(t, schemaResp, sockoptOutbound("chained", &prior))
+	configRaw := xrayOutboundsRawFromModel(t, schemaResp, sockoptOutbound("chained", nil))
+	plan := runXrayOutboundsModifyPlan(t, schemaResp, stateRaw, configRaw, stateRaw)
+
+	var got XrayOutboundsModel
+	if diags := plan.Get(ctx, &got); diags.HasError() {
+		t.Fatalf("reading plan: %v", diags)
+	}
+	if got.Outbound[0].StreamSettings.Sockopt != nil {
+		t.Fatalf("removed sockopt block must not come back from state: %+v", got.Outbound[0].StreamSettings.Sockopt)
+	}
+}
+
+// The config validator cannot see a keep-alive value the plan keeps from state.
+func TestXrayOutboundsResource_ModifyPlan_RejectsKeepAliveSignsFromState(t *testing.T) {
+	ctx := context.Background()
+	var schemaResp resource.SchemaResponse
+	NewXrayOutboundsResource().Schema(ctx, resource.SchemaRequest{}, &schemaResp)
+	prior := nullSockoptModel()
+	prior.TCPKeepAliveIdle = types.Int64Value(-1)
+	configured := nullSockoptModel()
+	configured.TCPKeepAliveInterval = types.Int64Value(30)
+
+	stateRaw := xrayOutboundsRawFromModel(t, schemaResp, sockoptOutbound("chained", &prior))
+	configRaw := xrayOutboundsRawFromModel(t, schemaResp, sockoptOutbound("chained", &configured))
+	resp := runXrayOutboundsModifyPlanResponse(t, schemaResp, stateRaw, configRaw, stateRaw)
+
+	if resp.Diagnostics.ErrorsCount() != 1 {
+		t.Fatalf("want one keep-alive error, got %v", resp.Diagnostics)
+	}
+	wantPath := path.Root("outbound").AtListIndex(0).AtName("stream_settings").AtName("sockopt").AtName("tcp_keep_alive_idle")
+	if got := resp.Diagnostics.Errors()[0].(interface{ Path() path.Path }).Path(); !got.Equal(wantPath) {
+		t.Fatalf("error path = %s, want %s", got, wantPath)
 	}
 }
