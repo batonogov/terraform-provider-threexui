@@ -11,6 +11,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
@@ -161,6 +162,175 @@ func TestHostGroupModelToWire(t *testing.T) {
 		if _, ok := m[k]; ok {
 			t.Fatalf("snake_case key %q must not be on the wire", k)
 		}
+	}
+}
+
+func TestHostGroupV311Validation(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		values    []string
+		wantError bool
+	}{
+		{name: "valid", values: []string{"a.example.com", "b.example.com"}},
+		{name: "blank", values: []string{""}, wantError: true},
+		{name: "untrimmed", values: []string{" a.example.com"}, wantError: true},
+		{name: "duplicate", values: []string{"a.example.com", "a.example.com"}, wantError: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			values := make([]attr.Value, 0, len(tc.values))
+			for _, value := range tc.values {
+				values = append(values, types.StringValue(value))
+			}
+			resp := &validator.ListResponse{}
+			hostGroupSnisValidator{}.ValidateList(context.Background(), validator.ListRequest{ConfigValue: types.ListValueMust(types.StringType, values)}, resp)
+			if resp.Diagnostics.HasError() != tc.wantError {
+				t.Fatalf("ValidateList() error = %v, want %v", resp.Diagnostics.HasError(), tc.wantError)
+			}
+		})
+	}
+
+	r := &HostGroupResource{}
+	for _, tc := range []struct {
+		name      string
+		shared    bool
+		snis      []string
+		wantError bool
+	}{
+		{name: "shared pool", shared: true, snis: []string{"a", "b"}},
+		{name: "shared singleton", shared: true, snis: []string{"a"}, wantError: true},
+		{name: "not shared", snis: []string{"a"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			plan := hostGroupResourcePlan(t, r, map[string]any{
+				"sni_shared_random": tc.shared,
+				"snis":              tc.snis,
+			})
+			resp := &resource.ModifyPlanResponse{Plan: plan}
+			r.ModifyPlan(context.Background(), resource.ModifyPlanRequest{Plan: plan, Config: planToConfig(plan)}, resp)
+			if resp.Diagnostics.HasError() != tc.wantError {
+				t.Fatalf("ModifyPlan() error = %v, want %v", resp.Diagnostics.HasError(), tc.wantError)
+			}
+		})
+	}
+}
+
+func TestHostGroupModifyPlanAlignsPrimarySNI(t *testing.T) {
+	r := &HostGroupResource{}
+	ctx := context.Background()
+	plan := hostGroupResourcePlan(t, r, map[string]any{
+		"sni":  "one.example.com",
+		"snis": []string{"one.example.com", "two.example.com"},
+	})
+	config := planToConfig(hostGroupResourcePlan(t, r, map[string]any{
+		"snis": []string{"three.example.com"},
+	}))
+	resp := &resource.ModifyPlanResponse{Plan: plan}
+	r.ModifyPlan(ctx, resource.ModifyPlanRequest{Plan: plan, Config: config}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected error: %v", resp.Diagnostics)
+	}
+	var model HostGroupResourceModel
+	resp.Plan.Get(ctx, &model)
+	if model.Sni.ValueString() != "three.example.com" {
+		t.Fatalf("planned primary SNI = %q, want three.example.com", model.Sni.ValueString())
+	}
+
+	resp = &resource.ModifyPlanResponse{Plan: plan}
+	r.ModifyPlan(ctx, resource.ModifyPlanRequest{
+		Plan:   plan,
+		Config: planToConfig(hostGroupResourcePlan(t, r, map[string]any{"snis": []string{}})),
+	}, resp)
+	resp.Plan.Get(ctx, &model)
+	if !model.Sni.IsNull() {
+		t.Fatalf("clearing the pool must plan a null primary SNI, got %s", model.Sni)
+	}
+}
+
+func TestHostGroupModifyPlanCanonicalizesSNI(t *testing.T) {
+	r := &HostGroupResource{}
+	ctx := context.Background()
+
+	t.Run("primary only rebuilds the pool", func(t *testing.T) {
+		plan := hostGroupResourcePlan(t, r, map[string]any{"snis": []string{}})
+		config := planToConfig(hostGroupResourcePlan(t, r, map[string]any{"sni": "one.example.com"}))
+		resp := &resource.ModifyPlanResponse{Plan: plan}
+		r.ModifyPlan(ctx, resource.ModifyPlanRequest{Plan: plan, Config: config}, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("unexpected error: %v", resp.Diagnostics)
+		}
+		var model HostGroupResourceModel
+		resp.Plan.Get(ctx, &model)
+		if !model.Snis.Equal(types.ListValueMust(types.StringType, []attr.Value{types.StringValue("one.example.com")})) {
+			t.Fatalf("planned pool = %s", model.Snis)
+		}
+	})
+
+	t.Run("explicit noncanonical pool is rejected", func(t *testing.T) {
+		plan := hostGroupResourcePlan(t, r, map[string]any{
+			"sni": "two.example.com", "snis": []string{"one.example.com", "two.example.com"},
+		})
+		resp := &resource.ModifyPlanResponse{Plan: plan}
+		r.ModifyPlan(ctx, resource.ModifyPlanRequest{Plan: plan, Config: planToConfig(plan)}, resp)
+		if !resp.Diagnostics.HasError() {
+			t.Fatal("expected a canonical-form error")
+		}
+	})
+
+	t.Run("unknown pool leaves primary unresolved", func(t *testing.T) {
+		plan := hostGroupResourcePlan(t, r, map[string]any{})
+		values := map[string]tftypes.Value{}
+		if err := plan.Raw.As(&values); err != nil {
+			t.Fatal(err)
+		}
+		values["snis"] = tftypes.NewValue(tftypes.List{ElementType: tftypes.String}, []tftypes.Value{
+			tftypes.NewValue(tftypes.String, tftypes.UnknownValue),
+			tftypes.NewValue(tftypes.String, tftypes.UnknownValue),
+		})
+		plan.Raw = tftypes.NewValue(plan.Schema.Type().TerraformType(ctx), values)
+		resp := &resource.ModifyPlanResponse{Plan: plan}
+		r.ModifyPlan(ctx, resource.ModifyPlanRequest{Plan: plan, Config: planToConfig(plan)}, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("unexpected error: %v", resp.Diagnostics)
+		}
+		var model HostGroupResourceModel
+		resp.Plan.Get(ctx, &model)
+		if !model.Sni.IsUnknown() {
+			t.Fatalf("unknown pool must leave primary unknown, got %s", model.Sni)
+		}
+	})
+
+	t.Run("state-preserved shared pool remains valid", func(t *testing.T) {
+		plan := hostGroupResourcePlan(t, r, map[string]any{
+			"sni_shared_random": true, "snis": []string{"one", "two"},
+		})
+		config := planToConfig(hostGroupResourcePlan(t, r, map[string]any{"sni_shared_random": true}))
+		resp := &resource.ModifyPlanResponse{Plan: plan}
+		r.ModifyPlan(ctx, resource.ModifyPlanRequest{Plan: plan, Config: config}, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("unexpected error: %v", resp.Diagnostics)
+		}
+	})
+}
+
+func TestHostGroupApplyValidation(t *testing.T) {
+	ctx := context.Background()
+	if err := validateHostGroupPlanForApply(ctx, &HostGroupResourceModel{
+		SniSharedRandom: types.BoolValue(true),
+		Snis:            types.ListValueMust(types.StringType, []attr.Value{types.StringValue("one")}),
+	}, &HostGroupResourceModel{}); err == nil {
+		t.Fatal("a resolved singleton pool must reject shared randomization")
+	}
+	if err := validateHostGroupPlanForApply(ctx, &HostGroupResourceModel{
+		Sni:  types.StringValue("two"),
+		Snis: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("one"), types.StringValue("two")}),
+	}, &HostGroupResourceModel{Sni: types.StringValue("two")}); err == nil {
+		t.Fatal("a resolved noncanonical primary/pool combination must be rejected")
+	}
+	if err := validateHostGroupPlanForApply(ctx, &HostGroupResourceModel{
+		SniSharedRandom: types.BoolValue(true),
+		Snis:            types.ListValueMust(types.StringType, []attr.Value{types.StringValue("one"), types.StringValue("two")}),
+	}, &HostGroupResourceModel{}); err != nil {
+		t.Fatalf("a valid shared pool was rejected: %v", err)
 	}
 }
 
@@ -441,7 +611,7 @@ func hostGroupResourcePlan(t *testing.T, r *HostGroupResource, vals map[string]a
 	}
 	// Bool attributes.
 	for _, k := range []string{"is_disabled", "is_hidden", "override_sni_from_address",
-		"keep_sni_blank", "allow_insecure", "mihomo_x25519", "shuffle_host"} {
+		"keep_sni_blank", "allow_insecure", "mihomo_x25519", "shuffle_host", "sni_shared_random"} {
 		if v, ok := vals[k].(bool); ok {
 			out[k] = tftypes.NewValue(tftypes.Bool, v)
 		}
@@ -453,6 +623,13 @@ func hostGroupResourcePlan(t *testing.T, r *HostGroupResource, vals map[string]a
 			elems = append(elems, tftypes.NewValue(tftypes.Number, id))
 		}
 		out["inbound_ids"] = tftypes.NewValue(tftypes.List{ElementType: tftypes.Number}, elems)
+	}
+	if snis, ok := vals["snis"].([]string); ok {
+		elems := make([]tftypes.Value, 0, len(snis))
+		for _, sni := range snis {
+			elems = append(elems, tftypes.NewValue(tftypes.String, sni))
+		}
+		out["snis"] = tftypes.NewValue(tftypes.List{ElementType: tftypes.String}, elems)
 	}
 	return tfsdk.Plan{
 		Schema: schemaResp.Schema,
@@ -519,7 +696,7 @@ func TestHostGroupResource_Create_Success(t *testing.T) {
 		"inbound_ids": []int64{1, 2},
 	})
 	resp := newHostGroupResourceCreateResponse(t, r)
-	r.Create(context.Background(), resource.CreateRequest{Plan: plan}, &resp)
+	r.Create(context.Background(), resource.CreateRequest{Plan: plan, Config: planToConfig(plan)}, &resp)
 	if resp.Diagnostics.HasError() {
 		t.Fatalf("unexpected error on Create: %v", resp.Diagnostics)
 	}
@@ -556,7 +733,7 @@ func TestHostGroupResource_Create_AddError(t *testing.T) {
 		"inbound_ids": []int64{999},
 	})
 	resp := newHostGroupResourceCreateResponse(t, r)
-	r.Create(context.Background(), resource.CreateRequest{Plan: plan}, &resp)
+	r.Create(context.Background(), resource.CreateRequest{Plan: plan, Config: planToConfig(plan)}, &resp)
 	if !resp.Diagnostics.HasError() {
 		t.Fatal("expected error when /add fails")
 	}
@@ -593,7 +770,7 @@ func TestHostGroupResource_Update(t *testing.T) {
 	})
 	state := hostGroupResourceReadState(t, r, "grp-7")
 	resp := newHostGroupResourceUpdateResponse(t, r)
-	r.Update(context.Background(), resource.UpdateRequest{Plan: plan, State: state}, &resp)
+	r.Update(context.Background(), resource.UpdateRequest{Plan: plan, State: state, Config: planToConfig(plan)}, &resp)
 	if resp.Diagnostics.HasError() {
 		t.Fatalf("unexpected error on Update: %v", resp.Diagnostics)
 	}
@@ -898,7 +1075,7 @@ func TestHostGroupResource_EmptyGroupIDError(t *testing.T) {
 	}
 
 	var updResp resource.UpdateResponse
-	r.Update(context.Background(), resource.UpdateRequest{Plan: tfsdk.Plan(state), State: state}, &updResp)
+	r.Update(context.Background(), resource.UpdateRequest{Plan: tfsdk.Plan(state), State: state, Config: planToConfig(tfsdk.Plan(state))}, &updResp)
 	if !updResp.Diagnostics.HasError() {
 		t.Fatal("expected error on Update with empty group_id")
 	}

@@ -97,6 +97,7 @@ resource "threexui_inbound_client" "client_a" {
 
 | 3x-ui sürümü | Durum |
 | --- | --- |
+| v3.11.0 | Test edildi |
 | v3.10.2 | Test edildi |
 | v3.10.0 | Test edildi |
 | v3.9.0 | Test edildi |
@@ -211,6 +212,9 @@ task test         # Birim + acceptance testlerini çalıştır
 ```bash
 # 3x-ui'ı localhost:2053 üzerinde başlat
 docker compose up -d
+
+# Yerel test kimlik bilgilerini ayarla (yeni v3.11.0+ rastgele üretir)
+docker compose exec -T 3xui /app/x-ui setting -username admin -password admin
 
 # Giriş: admin / admin
 

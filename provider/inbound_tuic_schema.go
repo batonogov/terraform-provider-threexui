@@ -84,12 +84,13 @@ type InboundTuicClientModel struct {
 	Comment    types.String `tfsdk:"comment"`
 	Reset      types.Int64  `tfsdk:"reset"`
 
-	ResetDay        types.Int64  `tfsdk:"reset_day"`
-	ResetMax        types.Int64  `tfsdk:"reset_max"`
-	TrafficReset    types.String `tfsdk:"traffic_reset"`
-	TrafficResetDay types.Int64  `tfsdk:"traffic_reset_day"`
-	CreatedAt       types.Int64  `tfsdk:"created_at"`
-	UpdatedAt       types.Int64  `tfsdk:"updated_at"`
+	ClientHostRuleIDs types.List   `tfsdk:"client_host_rule_ids"` // list of int64
+	ResetDay          types.Int64  `tfsdk:"reset_day"`
+	ResetMax          types.Int64  `tfsdk:"reset_max"`
+	TrafficReset      types.String `tfsdk:"traffic_reset"`
+	TrafficResetDay   types.Int64  `tfsdk:"traffic_reset_day"`
+	CreatedAt         types.Int64  `tfsdk:"created_at"`
+	UpdatedAt         types.Int64  `tfsdk:"updated_at"`
 }
 
 // ---------------------------------------------------------------------------
@@ -211,14 +212,24 @@ func tuicClientsBlock() schema.ListNestedBlock {
 					}
 					return a
 				}(),
-				"enable":            tuicBool("Enable the client."),
-				"limit_ip":          tuicInt("IP limit (0 = unlimited)."),
-				"total_gb":          tuicInt("Traffic quota in bytes (0 = unlimited)."),
-				"expiry_time":       tuicInt("Expiry as a unix timestamp (0 = never)."),
-				"tg_id":             tuicInt("Telegram ID."),
-				"sub_id":            tuicString("Subscription ID."),
-				"comment":           tuicString("Free-form comment."),
-				"reset":             tuicInt("Traffic reset cycle in days (0 = none)."),
+				"enable":      tuicBool("Enable the client."),
+				"limit_ip":    tuicInt("IP limit (0 = unlimited)."),
+				"total_gb":    tuicInt("Traffic quota in bytes (0 = unlimited)."),
+				"expiry_time": tuicInt("Expiry as a unix timestamp (0 = never)."),
+				"tg_id":       tuicInt("Telegram ID."),
+				"sub_id":      tuicString("Subscription ID."),
+				"comment":     tuicString("Free-form comment."),
+				"reset":       tuicInt("Traffic reset cycle in days (0 = none)."),
+				"client_host_rule_ids": schema.ListAttribute{
+					Optional:    true,
+					Computed:    true,
+					ElementType: types.Int64Type,
+					Description: "Host rule IDs bound to this client. Omit to preserve, [] to clear. Requires 3x-ui v3.11.0+.",
+					Validators:  []validator.List{clientHostRuleIDsValidator{}},
+					PlanModifiers: []planmodifier.List{
+						listplanmodifier.UseStateForUnknown(),
+					},
+				},
 				"reset_day":         tuicInt("Calendar renewal day (0 keeps the rolling interval)."),
 				"reset_max":         tuicInt("Cap on auto-renewals (0 = unlimited)."),
 				"traffic_reset":     tuicString("Per-client traffic reset cycle."),
@@ -293,6 +304,9 @@ func expandTuicClientsFromModel(list []InboundTuicClientModel) []any {
 		tuicPutString(entry, "subId", c.SubID)
 		tuicPutString(entry, "comment", c.Comment)
 		tuicPutInt(entry, "reset", c.Reset)
+		if !c.ClientHostRuleIDs.IsNull() && !c.ClientHostRuleIDs.IsUnknown() {
+			entry["clientHostRuleIds"] = typesListInt64ToAnySlice(c.ClientHostRuleIDs)
+		}
 		tuicPutInt(entry, "resetDay", c.ResetDay)
 		tuicPutInt(entry, "resetMax", c.ResetMax)
 		tuicPutString(entry, "trafficReset", c.TrafficReset)
@@ -406,12 +420,16 @@ func flattenTuicClientsToModel(list []any) []InboundTuicClientModel {
 			Comment:    tuicReadString(raw, "comment"),
 			Reset:      tuicReadInt(raw, "reset"),
 
-			ResetDay:        tuicReadInt(raw, "resetDay"),
-			ResetMax:        tuicReadInt(raw, "resetMax"),
-			TrafficReset:    tuicReadString(raw, "trafficReset"),
-			TrafficResetDay: tuicReadInt(raw, "trafficResetDay"),
-			CreatedAt:       tuicReadInt(raw, "created_at"),
-			UpdatedAt:       tuicReadInt(raw, "updated_at"),
+			ClientHostRuleIDs: flattenClientHostRuleIDs(raw["clientHostRuleIds"]),
+			ResetDay:          tuicReadInt(raw, "resetDay"),
+			ResetMax:          tuicReadInt(raw, "resetMax"),
+			TrafficReset:      tuicReadString(raw, "trafficReset"),
+			TrafficResetDay:   tuicReadInt(raw, "trafficResetDay"),
+			CreatedAt:         tuicReadInt(raw, "created_at"),
+			UpdatedAt:         tuicReadInt(raw, "updated_at"),
+		}
+		if c.ClientHostRuleIDs.IsNull() {
+			c.ClientHostRuleIDs = types.ListValueMust(types.Int64Type, nil)
 		}
 		out = append(out, c)
 	}

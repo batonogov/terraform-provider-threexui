@@ -45,6 +45,8 @@ terraform import threexui_host_group.premium_eu 1234567890123456
 - `port` (Optional, Number) - Override port for the generated share links (0–65535).
 - `security` (Optional, String) - Link security scheme. One of: `same`, `tls`, `none`, `reality`.
 - `sni` (Optional, String) - Server Name Indication override.
+- `snis` (Optional, List of String) - Pool of SNIs for generated links. Added in 3x-ui v3.11.0.
+- `sni_shared_random` (Optional, Boolean) - Pick one SNI per subscription fetch for the whole host group instead of per generated config. Added in 3x-ui v3.11.0.
 - `host_header` (Optional, String) - Host header override.
 - `path` (Optional, String) - Path override for the generated share links.
 - `alpn` (Optional, List of String) - ALPN protocol list (e.g. `["h2", "http/1.1"]`).
@@ -65,6 +67,7 @@ terraform import threexui_host_group.premium_eu 1234567890123456
 - `mihomo_ip_version` (Optional, String) - Mihomo IP version preference. One of: `dual`, `ipv4`, `ipv6`, `ipv4-prefer`, `ipv6-prefer`.
 - `mihomo_x25519` (Optional, Boolean) - Use Mihomo X25519 key exchange.
 - `shuffle_host` (Optional, Boolean) - Shuffle the host order in generated links.
+- `random_count` (Optional, Number) - Number of unique random addresses emitted for a CIDR host (1-100). Added in 3x-ui v3.11.0; older panels read it back as null.
 - `hosts` (Optional, List of String) - Explicit host list for this group.
 - `tags` (Optional, List of String) - Tags assigned to this host group.
 

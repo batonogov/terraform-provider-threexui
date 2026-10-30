@@ -815,3 +815,46 @@ resource "threexui_inbound_client" "weekday" {
 		},
 	})
 }
+
+func TestAccInboundClientHostRuleIDs_v311(t *testing.T) {
+	requireMinVersion(t, "v3.11.0")
+	config := func(ids string) string {
+		return testAccProviderConfig() + `
+resource "threexui_inbound" "host_rules" {
+  port     = 25135
+  protocol = "vless"
+  remark   = "acc-client-host-rules-v311"
+  enable   = true
+  vless_settings {
+    decryption = "none"
+  }
+}
+
+resource "threexui_inbound_client" "host_rules" {
+  inbound_id           = threexui_inbound.host_rules.id
+  email                = "host-rules-v311@test.com"
+  enable               = true
+  client_host_rule_ids = ` + ids + `
+}
+`
+	}
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories(),
+		CheckDestroy:             testAccCheckInboundClientDestroyed,
+		Steps: []resource.TestStep{
+			{
+				Config: config("[1, 2]"),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("threexui_inbound_client.host_rules", "client_host_rule_ids.#", "2"),
+					resource.TestCheckResourceAttr("threexui_inbound_client.host_rules", "client_host_rule_ids.0", "1"),
+					resource.TestCheckResourceAttr("threexui_inbound_client.host_rules", "client_host_rule_ids.1", "2"),
+				),
+			},
+			{
+				Config: config("[]"),
+				Check:  resource.TestCheckResourceAttr("threexui_inbound_client.host_rules", "client_host_rule_ids.#", "0"),
+			},
+		},
+	})
+}

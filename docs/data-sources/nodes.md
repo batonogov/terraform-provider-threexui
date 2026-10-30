@@ -37,4 +37,4 @@ This data source has no arguments.
 ## Attribute Reference
 
 - `id` (String) - ID derived from the first node (`0` when the cluster has no nodes).
-- `nodes` (String, Sensitive) - JSON-encoded array of cluster node objects. Use `jsondecode()` to work with the data. Each object contains managed fields (`name`, `address`, `port`, `scheme`, `basePath`, `enable`, `tlsVerifyMode`, `inboundSyncMode`, `inboundTags`, `outboundTag`, …) and observed state (`status`, `lastHeartbeat`, `latencyMs`, `xrayVersion`, `panelVersion`, `cpuPct`, `memPct`, `xrayState`, `xrayError`, counts, …), plus `apiToken`/`pinnedCertSha256` (sensitive, raw).
+- `nodes` (String, Sensitive) - JSON-encoded array of cluster node objects. Use `jsondecode()` to work with the data. Each object contains managed fields (`name`, `address`, `port`, `scheme`, `basePath`, `enable`, `tlsVerifyMode`, `inboundSyncMode`, `inboundTags`, `outboundTag`, …) and observed state (`status`, `lastHeartbeat`, `latencyMs`, `xrayVersion`, `panelVersion`, `cpuPct`, `memPct`, `xrayState`, `xrayError`, counts, `unavailableMetrics` (v3.11.0+), …), plus `apiToken`/`pinnedCertSha256` (sensitive, raw).

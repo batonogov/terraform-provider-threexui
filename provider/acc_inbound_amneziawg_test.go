@@ -494,3 +494,78 @@ resource "threexui_inbound" "awg_stamps" {
 		},
 	})
 }
+
+func TestAccInboundAmneziawgKeepAliveRange_v311(t *testing.T) {
+	requireMinVersion(t, "v3.11.0")
+
+	const port = 26022
+	config := func(keepalive, hostRuleIDs string) string {
+		return testAccProviderConfig() + fmt.Sprintf(`
+resource "threexui_inbound" "awg_keepalive" {
+  port     = %d
+  protocol = "amneziawg"
+  remark   = "acc-awg-keepalive-v311"
+  enable   = true
+
+  amneziawg_settings {
+    server {
+      kernel_mode = false
+    }
+    clients {
+      email                = "awg-keepalive-v311@test.com"
+      enable               = true
+      public_key           = "dGVzdHB1YmxpY2tleXRlc3RwdWJsaWNrZXkxMjM0NQ=="
+      allowed_ips          = ["10.8.1.22/32"]
+      client_host_rule_ids = %s
+%s
+    }
+  }
+}
+`, port, hostRuleIDs, keepalive)
+	}
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: config("", "[]"),
+				Check:  resource.TestCheckResourceAttr("threexui_inbound.awg_keepalive", "amneziawg_settings.clients.0.keep_alive", "0"),
+			},
+			{
+				Config: config(`keep_alive_range = "15-25"`, "[1, 2]"),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("threexui_inbound.awg_keepalive", "amneziawg_settings.server.kernel_mode", "false"),
+					resource.TestCheckResourceAttr("threexui_inbound.awg_keepalive", "amneziawg_settings.clients.0.keep_alive_range", "15-25"),
+					resource.TestCheckResourceAttr("threexui_inbound.awg_keepalive", "amneziawg_settings.clients.0.client_host_rule_ids.#", "2"),
+				),
+			},
+			{
+				Config: config("keep_alive = 0", "[]"),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("threexui_inbound.awg_keepalive", "amneziawg_settings.clients.0.keep_alive", "0"),
+					resource.TestCheckNoResourceAttr("threexui_inbound.awg_keepalive", "amneziawg_settings.clients.0.keep_alive_range"),
+					resource.TestCheckResourceAttr("threexui_inbound.awg_keepalive", "amneziawg_settings.clients.0.client_host_rule_ids.#", "0"),
+				),
+			},
+			{
+				Config: config(`keep_alive_range = "20-30"`, "[3]"),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("threexui_inbound.awg_keepalive", "amneziawg_settings.clients.0.keep_alive_range", "20-30"),
+					resource.TestCheckResourceAttr("threexui_inbound.awg_keepalive", "amneziawg_settings.clients.0.client_host_rule_ids.#", "1"),
+				),
+			},
+			{
+				Config: config("", "[]"),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("threexui_inbound.awg_keepalive", "amneziawg_settings.clients.0.keep_alive", "0"),
+					resource.TestCheckNoResourceAttr("threexui_inbound.awg_keepalive", "amneziawg_settings.clients.0.keep_alive_range"),
+				),
+			},
+			{
+				Config:   config("", "[]"),
+				PlanOnly: true,
+			},
+		},
+	})
+}

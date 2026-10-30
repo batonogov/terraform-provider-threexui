@@ -575,7 +575,7 @@ func nodeResourcePlan(t *testing.T, r *NodeResource, vals map[string]any) tfsdk.
 			out[k] = tftypes.NewValue(tftypes.Bool, nil)
 		case "cpu_pct", "mem_pct":
 			out[k] = tftypes.NewValue(tftypes.Number, nil)
-		case "inbound_tags":
+		case "inbound_tags", "unavailable_metrics":
 			out[k] = tftypes.NewValue(tftypes.List{ElementType: tftypes.String}, nil)
 		default:
 			out[k] = tftypes.NewValue(tftypes.String, nil)
@@ -995,7 +995,7 @@ func modifyPlanFixture(t *testing.T, r *NodeResource, apiWOVer, pinWOVer int64) 
 				vals[k] = tftypes.NewValue(tftypes.Number, 2053)
 			case "enable", "allow_private_address", "config_dirty", "transitive":
 				vals[k] = tftypes.NewValue(tftypes.Bool, nil)
-			case "inbound_tags":
+			case "inbound_tags", "unavailable_metrics":
 				vals[k] = tftypes.NewValue(tftypes.List{ElementType: tftypes.String}, nil)
 			case "api_token_wo_version":
 				vals[k] = tftypes.NewValue(tftypes.Number, apiV)

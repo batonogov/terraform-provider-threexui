@@ -70,6 +70,7 @@ In addition to the arguments above, the following observed-state attributes are 
 - `panel_version` (String) - 3x-ui panel version reported by the node.
 - `cpu_pct` / `mem_pct` (Number) - Node CPU / memory usage percent.
 - `uptime_secs` / `net_up` / `net_down` (Number) - Uptime (s) and network byte counters.
+- `unavailable_metrics` (List of String) - Container metrics unavailable on the node (3x-ui v3.11.0+). A metric absent from this list can legitimately be zero.
 - `last_error` (String) - Last heartbeat error message.
 - `xray_state` / `xray_error` (String) - Xray core state / error from the node.
 - `config_dirty` (Bool) / `config_dirty_at` (Number) - Whether the node config differs from the central panel.

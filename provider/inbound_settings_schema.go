@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
@@ -9,6 +10,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/mapplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -132,20 +134,21 @@ type InboundWireguardPeerModel struct {
 // legacy snake_case settings keys), the multi-client array is serialised with
 // camelCase JSON keys to match the upstream WireguardClient zod schema.
 type InboundWireguardClientModel struct {
-	PrivateKey   types.String `tfsdk:"private_key"`
-	PublicKey    types.String `tfsdk:"public_key"`
-	PreSharedKey types.String `tfsdk:"pre_shared_key"`
-	AllowedIPs   types.List   `tfsdk:"allowed_ips"` // list of string
-	KeepAlive    types.Int64  `tfsdk:"keep_alive"`
-	Email        types.String `tfsdk:"email"`
-	LimitIP      types.Int64  `tfsdk:"limit_ip"`
-	TotalGB      types.Int64  `tfsdk:"total_gb"`
-	ExpiryTime   types.Int64  `tfsdk:"expiry_time"`
-	Enable       types.Bool   `tfsdk:"enable"`
-	TgID         types.Int64  `tfsdk:"tg_id"`
-	SubID        types.String `tfsdk:"sub_id"`
-	Comment      types.String `tfsdk:"comment"`
-	Reset        types.Int64  `tfsdk:"reset"`
+	PrivateKey        types.String `tfsdk:"private_key"`
+	PublicKey         types.String `tfsdk:"public_key"`
+	PreSharedKey      types.String `tfsdk:"pre_shared_key"`
+	AllowedIPs        types.List   `tfsdk:"allowed_ips"` // list of string
+	KeepAlive         types.Int64  `tfsdk:"keep_alive"`
+	ClientHostRuleIDs types.List   `tfsdk:"client_host_rule_ids"` // list of int64
+	Email             types.String `tfsdk:"email"`
+	LimitIP           types.Int64  `tfsdk:"limit_ip"`
+	TotalGB           types.Int64  `tfsdk:"total_gb"`
+	ExpiryTime        types.Int64  `tfsdk:"expiry_time"`
+	Enable            types.Bool   `tfsdk:"enable"`
+	TgID              types.Int64  `tfsdk:"tg_id"`
+	SubID             types.String `tfsdk:"sub_id"`
+	Comment           types.String `tfsdk:"comment"`
+	Reset             types.Int64  `tfsdk:"reset"`
 }
 
 // ---------------------------------------------------------------------------
@@ -1641,9 +1644,21 @@ func wireguardClientsBlock() schema.ListNestedBlock {
 					},
 				},
 				"keep_alive": schema.Int64Attribute{
-					Optional: true, Computed: true,
+					Optional:   true,
+					Computed:   true,
+					Validators: []validator.Int64{int64validator.Between(0, 65535)},
 					PlanModifiers: []planmodifier.Int64{
 						int64planmodifier.UseStateForUnknown(),
+					},
+				},
+				"client_host_rule_ids": schema.ListAttribute{
+					Optional:    true,
+					Computed:    true,
+					ElementType: types.Int64Type,
+					Description: "Host rule IDs bound to this client. Omit to preserve, [] to clear. Requires 3x-ui v3.11.0+.",
+					Validators:  []validator.List{clientHostRuleIDsValidator{}},
+					PlanModifiers: []planmodifier.List{
+						listplanmodifier.UseStateForUnknown(),
 					},
 				},
 				"email": schema.StringAttribute{
@@ -1729,6 +1744,9 @@ func expandWireguardClientsFromModel(list []InboundWireguardClientModel) []any {
 		if !c.KeepAlive.IsNull() && !c.KeepAlive.IsUnknown() {
 			entry["keepAlive"] = int(c.KeepAlive.ValueInt64())
 		}
+		if !c.ClientHostRuleIDs.IsNull() && !c.ClientHostRuleIDs.IsUnknown() {
+			entry["clientHostRuleIds"] = typesListInt64ToAnySlice(c.ClientHostRuleIDs)
+		}
 		if !c.Email.IsNull() && !c.Email.IsUnknown() {
 			entry["email"] = c.Email.ValueString()
 		}
@@ -1797,8 +1815,9 @@ func flattenInboundWireguardClientsToModel(list []any) []InboundWireguardClientM
 		if v, ok := raw["keepAlive"]; ok {
 			c.KeepAlive = types.Int64Value(int64(intValue(v)))
 		} else {
-			c.KeepAlive = types.Int64Null()
+			c.KeepAlive = types.Int64Value(0)
 		}
+		c.ClientHostRuleIDs = flattenClientHostRuleIDs(raw["clientHostRuleIds"])
 		if v, ok := raw["email"].(string); ok {
 			c.Email = types.StringValue(v)
 		} else {

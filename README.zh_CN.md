@@ -97,6 +97,7 @@ resource "threexui_inbound_client" "client_a" {
 
 | 3x-ui 版本 | 状态 |
 | --- | --- |
+| v3.11.0 | 已测试 |
 | v3.10.2 | 已测试 |
 | v3.10.0 | 已测试 |
 | v3.9.0 | 已测试 |
@@ -211,6 +212,9 @@ task test         # 单元 + 验收
 ```bash
 # 在 localhost:2053 启动 3x-ui
 docker compose up -d
+
+# 设置本地测试凭据（全新 v3.11.0+ 会生成随机凭据）
+docker compose exec -T 3xui /app/x-ui setting -username admin -password admin
 
 # 登录:admin / admin
 

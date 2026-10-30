@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -153,6 +154,34 @@ func TestDiffInboundOwnedPeers(t *testing.T) {
 			name:     "allowedIPs order does not matter",
 			plan:     []any{peer("a", "allowedIPs", []any{"10.0.0.2/32", "10.0.0.3/32"})},
 			observed: []any{peer("a", "allowedIPs", []any{"10.0.0.3/32", "10.0.0.2/32"})},
+		},
+		{
+			name:     "zero keepalive matches an omitted legacy panel key",
+			plan:     []any{peer("a", "keepAlive", 0)},
+			observed: []any{peer("a")},
+		},
+		{
+			name:       "zero keepalive still replaces a positive value",
+			plan:       []any{peer("a", "keepAlive", 0)},
+			observed:   []any{peer("a", "keepAlive", 25)},
+			wantUpdate: []string{"a"},
+		},
+		{
+			name:       "adding a range to an unset keepalive requires an update",
+			plan:       []any{peer("a", "keepAlive", "15-25")},
+			observed:   []any{peer("a")},
+			wantUpdate: []string{"a"},
+		},
+		{
+			name:     "empty host bindings match an omitted panel key",
+			plan:     []any{peer("a", "clientHostRuleIds", []any{})},
+			observed: []any{peer("a")},
+		},
+		{
+			name:       "clearing host bindings still updates a bound peer",
+			plan:       []any{peer("a", "clientHostRuleIds", []any{})},
+			observed:   []any{peer("a", "clientHostRuleIds", []any{float64(1)})},
+			wantUpdate: []string{"a"},
 		},
 		{
 			name:     "duplicate observed emails take the first entry",
@@ -776,11 +805,7 @@ func TestInboundResourceModifyPlanMarksEditedPeerVolatileAttrs(t *testing.T) {
 	r.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
 
 	mkPlan := func(m *InboundResourceModel) tfsdk.Plan {
-		p := tfsdk.Plan{Schema: schemaResp.Schema}
-		if diags := p.Set(ctx, m); diags.HasError() {
-			t.Fatalf("building plan fixture: %v", diags)
-		}
-		return p
+		return inboundResourceFixture(t, r, m)
 	}
 
 	stateModel := &InboundResourceModel{
@@ -811,10 +836,7 @@ func TestInboundResourceModifyPlanMarksEditedPeerVolatileAttrs(t *testing.T) {
 	}
 
 	plan := mkPlan(planModel)
-	state := tfsdk.State{Schema: schemaResp.Schema}
-	if diags := state.Set(ctx, stateModel); diags.HasError() {
-		t.Fatalf("building state fixture: %v", diags)
-	}
+	state := tfsdk.State(inboundResourceFixture(t, r, stateModel))
 
 	resp := &resource.ModifyPlanResponse{Plan: plan}
 	r.ModifyPlan(ctx, resource.ModifyPlanRequest{Plan: plan, State: state}, resp)
@@ -854,6 +876,27 @@ func TestInboundResourceModifyPlanMarksEditedPeerVolatileAttrs(t *testing.T) {
 func inboundResourceFixture(t *testing.T, r *InboundResource, m *InboundResourceModel) tfsdk.Plan {
 	t.Helper()
 	ctx := context.Background()
+	if m.AmneziawgSettings != nil {
+		for i := range m.AmneziawgSettings.Clients {
+			if reflect.DeepEqual(m.AmneziawgSettings.Clients[i].ClientHostRuleIDs, types.List{}) {
+				m.AmneziawgSettings.Clients[i].ClientHostRuleIDs = types.ListNull(types.Int64Type)
+			}
+		}
+	}
+	if m.WireguardSettings != nil {
+		for i := range m.WireguardSettings.Clients {
+			if reflect.DeepEqual(m.WireguardSettings.Clients[i].ClientHostRuleIDs, types.List{}) {
+				m.WireguardSettings.Clients[i].ClientHostRuleIDs = types.ListNull(types.Int64Type)
+			}
+		}
+	}
+	if m.TuicSettings != nil {
+		for i := range m.TuicSettings.Clients {
+			if reflect.DeepEqual(m.TuicSettings.Clients[i].ClientHostRuleIDs, types.List{}) {
+				m.TuicSettings.Clients[i].ClientHostRuleIDs = types.ListNull(types.Int64Type)
+			}
+		}
+	}
 	var schemaResp resource.SchemaResponse
 	r.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
 	p := tfsdk.Plan{Schema: schemaResp.Schema}
@@ -1858,11 +1901,7 @@ func TestInboundResourceModifyPlanMarksEditedTuicPeerVolatileAttrs(t *testing.T)
 	r.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
 
 	mkPlan := func(m *InboundResourceModel) tfsdk.Plan {
-		p := tfsdk.Plan{Schema: schemaResp.Schema}
-		if diags := p.Set(ctx, m); diags.HasError() {
-			t.Fatalf("building plan fixture: %v", diags)
-		}
-		return p
+		return inboundResourceFixture(t, r, m)
 	}
 
 	stateModel := &InboundResourceModel{
@@ -1893,10 +1932,7 @@ func TestInboundResourceModifyPlanMarksEditedTuicPeerVolatileAttrs(t *testing.T)
 	}
 
 	plan := mkPlan(planModel)
-	state := tfsdk.State{Schema: schemaResp.Schema}
-	if diags := state.Set(ctx, stateModel); diags.HasError() {
-		t.Fatalf("building state fixture: %v", diags)
-	}
+	state := tfsdk.State(inboundResourceFixture(t, r, stateModel))
 
 	resp := &resource.ModifyPlanResponse{Plan: plan}
 	r.ModifyPlan(ctx, resource.ModifyPlanRequest{Plan: plan, State: state}, resp)
@@ -1931,6 +1967,70 @@ func TestInboundResourceModifyPlanMarksEditedTuicPeerVolatileAttrs(t *testing.T)
 	}
 }
 
+func TestInboundResourceModifyPlanClearsScalarWhenKeepAliveRangeConfigured(t *testing.T) {
+	r := &InboundResource{}
+	ctx := context.Background()
+	peer := awgPeerModel("a", "same", 1000)
+	peer.KeepAlive = types.Int64Value(25)
+	peer.KeepAliveRange = types.StringNull()
+	stateModel := &InboundResourceModel{
+		ID: types.StringValue("7"), Remark: types.StringValue("r"), Enable: types.BoolValue(true),
+		Port: types.Int64Value(25070), Protocol: types.StringValue("amneziawg"),
+		AmneziawgSettings: &InboundAmneziawgSettingsModel{Clients: []InboundAmneziawgClientModel{peer}},
+	}
+	planModel := &InboundResourceModel{
+		ID: types.StringValue("7"), Remark: types.StringValue("changed"), Enable: types.BoolValue(true),
+		Port: types.Int64Value(25070), Protocol: types.StringValue("amneziawg"),
+		AmneziawgSettings: &InboundAmneziawgSettingsModel{Clients: []InboundAmneziawgClientModel{peer}},
+	}
+	planModel.AmneziawgSettings.Clients[0].KeepAliveRange = types.StringValue("15-25")
+
+	plan := inboundResourceFixture(t, r, planModel)
+	state := tfsdk.State(inboundResourceFixture(t, r, stateModel))
+	resp := &resource.ModifyPlanResponse{Plan: plan}
+	r.ModifyPlan(ctx, resource.ModifyPlanRequest{Plan: plan, State: state}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected error: %v", resp.Diagnostics)
+	}
+	var scalar attr.Value
+	resp.Plan.GetAttribute(ctx, path.Root("amneziawg_settings").AtName("clients").AtListIndex(0).AtName("keep_alive"), &scalar)
+	if !scalar.IsNull() {
+		t.Fatalf("state-carried scalar must be null when a range is configured, got %v", scalar)
+	}
+}
+
+func TestInboundResourceModifyPlanDisablesRemovedKeepAliveRange(t *testing.T) {
+	r := &InboundResource{}
+	ctx := context.Background()
+	peer := awgPeerModel("a", "same", 1000)
+	peer.KeepAlive = types.Int64Null()
+	peer.KeepAliveRange = types.StringValue("15-25")
+	stateModel := &InboundResourceModel{
+		ID: types.StringValue("7"), Remark: types.StringValue("r"), Enable: types.BoolValue(true),
+		Port: types.Int64Value(25070), Protocol: types.StringValue("amneziawg"),
+		AmneziawgSettings: &InboundAmneziawgSettingsModel{Clients: []InboundAmneziawgClientModel{peer}},
+	}
+	planModel := &InboundResourceModel{
+		ID: types.StringValue("7"), Remark: types.StringValue("changed"), Enable: types.BoolValue(true),
+		Port: types.Int64Value(25070), Protocol: types.StringValue("amneziawg"),
+		AmneziawgSettings: &InboundAmneziawgSettingsModel{Clients: []InboundAmneziawgClientModel{peer}},
+	}
+	planModel.AmneziawgSettings.Clients[0].KeepAliveRange = types.StringNull()
+
+	plan := inboundResourceFixture(t, r, planModel)
+	state := tfsdk.State(inboundResourceFixture(t, r, stateModel))
+	resp := &resource.ModifyPlanResponse{Plan: plan}
+	r.ModifyPlan(ctx, resource.ModifyPlanRequest{Plan: plan, State: state}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected error: %v", resp.Diagnostics)
+	}
+	var scalar attr.Value
+	resp.Plan.GetAttribute(ctx, path.Root("amneziawg_settings").AtName("clients").AtListIndex(0).AtName("keep_alive"), &scalar)
+	if scalar.IsNull() || scalar.IsUnknown() || scalar.(types.Int64).ValueInt64() != 0 {
+		t.Fatalf("removing a range must plan keep_alive = 0, got %v", scalar)
+	}
+}
+
 // TestInboundResourceModifyPlanMarksNewPeerAttrsUnknown covers peers the apply
 // adds: a new list element has no prior state for UseStateForUnknown to copy,
 // so its unset Optional+Computed attributes plan as null — while the panel
@@ -1943,11 +2043,7 @@ func TestInboundResourceModifyPlanMarksNewPeerAttrsUnknown(t *testing.T) {
 	r.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
 
 	mkPlan := func(m *InboundResourceModel) tfsdk.Plan {
-		p := tfsdk.Plan{Schema: schemaResp.Schema}
-		if diags := p.Set(ctx, m); diags.HasError() {
-			t.Fatalf("building plan fixture: %v", diags)
-		}
-		return p
+		return inboundResourceFixture(t, r, m)
 	}
 
 	stateModel := &InboundResourceModel{
@@ -1979,10 +2075,7 @@ func TestInboundResourceModifyPlanMarksNewPeerAttrsUnknown(t *testing.T) {
 	}
 
 	plan := mkPlan(planModel)
-	state := tfsdk.State{Schema: schemaResp.Schema}
-	if diags := state.Set(ctx, stateModel); diags.HasError() {
-		t.Fatalf("building state fixture: %v", diags)
-	}
+	state := tfsdk.State(inboundResourceFixture(t, r, stateModel))
 
 	resp := &resource.ModifyPlanResponse{Plan: plan}
 	r.ModifyPlan(ctx, resource.ModifyPlanRequest{Plan: plan, State: state}, resp)
@@ -2015,6 +2108,9 @@ func TestInboundResourceModifyPlanMarksNewPeerAttrsUnknown(t *testing.T) {
 	}
 	if v := get(1, "enable"); v.IsUnknown() {
 		t.Errorf("new peer enable is configured; must stay promised, got unknown")
+	}
+	if v := get(1, "keep_alive_range"); v.IsUnknown() || !v.IsNull() {
+		t.Errorf("optional-only keep_alive_range must stay null, got %v", v)
 	}
 	// ...and the existing peer is untouched.
 	if v := get(0, "comment"); v.IsUnknown() {

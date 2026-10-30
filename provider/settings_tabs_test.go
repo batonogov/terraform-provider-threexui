@@ -73,7 +73,7 @@ func TestPanelSettingsNeedRestart_NonRestartKey(t *testing.T) {
 // /setting/all serialises AllSetting whole, so an absent key means this version
 // predates the setting and /setting/update will drop it exactly as the read
 // omitted it. Restarting for a value that is never stored would bounce the
-// panel on every apply — and 7 of the 13 versions in compat-versions.json
+// panel on every apply — and 7 of the 14 versions in compat-versions.json
 // predate the notifier keys (#449). This deliberately reverses the behaviour
 // added in #443.
 func TestPanelSettingsNeedRestart_KeyUnknownToPanel(t *testing.T) {

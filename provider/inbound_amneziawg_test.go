@@ -34,6 +34,7 @@ func awgFullServerModel() *InboundAmneziawgServerModel {
 		IPv6Subnet:             types.StringValue("fd00:8:1::/64"),
 		IPv6ExternalInterface:  types.StringValue("eth1"),
 		RouteThroughXray:       types.BoolValue(true),
+		KernelMode:             types.BoolValue(false),
 		Jc:                     types.Int64Value(4),
 		Jmin:                   types.Int64Value(56),
 		Jmax:                   types.Int64Value(190),
@@ -325,7 +326,7 @@ func TestAmneziawgSettingsBlockShape(t *testing.T) {
 	want := []string{
 		"private_key", "public_key", "subnet_ip", "subnet_cidr", "mtu",
 		"primary_dns", "secondary_dns", "external_interface",
-		"ipv6_enabled", "ipv6_subnet", "ipv6_external_interface", "route_through_xray",
+		"ipv6_enabled", "ipv6_subnet", "ipv6_external_interface", "route_through_xray", "kernel_mode",
 		"jc", "jmin", "jmax", "s1", "s2", "s3", "s4",
 		"h1", "h2", "h3", "h4", "i1", "i2", "i3", "i4", "i5",
 		"header_protection_key", "content_padding_addition",
@@ -608,7 +609,7 @@ func TestAmneziawgClientsBlockShape(t *testing.T) {
 
 	want := []string{
 		"email", "private_key", "public_key", "pre_shared_key", "allowed_ips",
-		"keep_alive", "forwarded_ports", "enable", "limit_ip", "total_gb",
+		"keep_alive", "keep_alive_range", "client_host_rule_ids", "forwarded_ports", "enable", "limit_ip", "total_gb",
 		"expiry_time", "tg_id", "sub_id", "comment", "reset", "group",
 		"reset_day", "reset_max", "traffic_reset", "traffic_reset_day",
 		"created_at", "updated_at",
