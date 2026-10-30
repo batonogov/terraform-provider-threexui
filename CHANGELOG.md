@@ -1,5 +1,17 @@
 # Changelog
 
+## [3.29.0](https://github.com/batonogov/terraform-provider-threexui/compare/v3.28.0...v3.29.0) (2026-10-30)
+
+
+### Features
+
+* add 3x-ui v3.11.0 support ([#475](https://github.com/batonogov/terraform-provider-threexui/issues/475)) ([95acbe2](https://github.com/batonogov/terraform-provider-threexui/commit/95acbe2de403ad74e6415fe73a9b42f8ecdd32a4))
+
+
+### Bug Fixes
+
+* update Go toolchain to 1.26.10 ([#477](https://github.com/batonogov/terraform-provider-threexui/issues/477)) ([0e3e51e](https://github.com/batonogov/terraform-provider-threexui/commit/0e3e51e4b1b55767fd7cb614d3fcbe236c060511))
+
 ## [3.28.0](https://github.com/batonogov/terraform-provider-threexui/compare/v3.27.0...v3.28.0) (2026-10-19)
 
 
