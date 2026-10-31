@@ -36,6 +36,9 @@ func TestDocumentedSchemaSections(t *testing.T) {
 	assertDocumentedBlock(t, "docs/resources/inbound.md", "##### `server`", amneziawg.Blocks["server"])
 	assertDocumentedBlock(t, "docs/resources/inbound.md", "##### `clients`", amneziawg.Blocks["clients"])
 
+	stream := inboundStreamSettingsBlockSchema()
+	assertDocumentedBlock(t, "docs/resources/inbound.md", "#### `sockopt`", stream.Blocks["sockopt"])
+
 	assertDocumentedBlock(t, "docs/resources/inbound.md", "#### `tuic_settings`", inbound["tuic_settings"])
 	// The nested `server`/`clients` headings deliberately reuse the
 	// AmneziaWG spelling and documentedFields matches the FIRST heading, so

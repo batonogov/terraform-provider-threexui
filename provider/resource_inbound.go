@@ -1312,6 +1312,12 @@ func (r *InboundResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	// A keep-alive value inherited from state bypasses the config validator.
+	if planModel.StreamSettings != nil && planModel.StreamSettings.Sockopt != nil {
+		sockopt := planModel.StreamSettings.Sockopt
+		validateSockoptKeepAlive(sockopt.TCPKeepAliveIdle, sockopt.TCPKeepAliveInterval,
+			path.Root("stream_settings").AtName("sockopt"), &resp.Diagnostics)
+	}
 	protocol := planModel.Protocol.ValueString()
 	if !protocolReconcilesPeersViaClientAPI(protocol) {
 		return

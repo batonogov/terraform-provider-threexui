@@ -983,7 +983,9 @@ func (r *XrayOutboundsResource) ImportState(ctx context.Context, _ resource.Impo
 // schema modifier restores the prior state object into the plan, and the
 // wholesale configured-list reset below must not drop it. The configured
 // elements are therefore re-merged with the prior state's stream_settings
-// (matched by tag) whenever the configuration omits the block.
+// (matched by tag) whenever the configuration omits the block. The same holds
+// one level down for a declared sockopt block, whose schema promises that an
+// omitted attribute keeps its current value.
 func (r *XrayOutboundsResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
 	if req.Plan.Raw.IsNull() || req.State.Raw.IsNull() {
 		return
@@ -1007,12 +1009,20 @@ func (r *XrayOutboundsResource) ModifyPlan(ctx context.Context, req resource.Mod
 		return
 	}
 
-	if merged := mergeOutboundStreamSettingsFromState(configured, stateOutbound); !merged.Equal(configured) {
-		resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, resourcepath.Root("outbound"), merged)...)
+	merged := mergeOutboundStreamSettingsFromState(configured, stateOutbound)
+	resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, resourcepath.Root("outbound"), merged)...)
+	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, resourcepath.Root("outbound"), configured)...)
+	// A keep-alive value inherited from state bypasses the config validator.
+	for i, e := range merged.Elements() {
+		// Null and unknown objects have no attributes, so they yield a null sockopt.
+		obj, _ := e.(types.Object)
+		ss, _ := obj.Attributes()["stream_settings"].(types.Object)
+		sockopt, _ := ss.Attributes()["sockopt"].(types.Object)
+		validateSockoptKeepAliveObject(sockopt, resourcepath.Root("outbound").AtListIndex(i).AtName("stream_settings").AtName("sockopt"), &resp.Diagnostics)
+	}
 }
 
 // mergeOutboundStreamSettingsFromState copies the prior state's stream_settings
@@ -1023,6 +1033,11 @@ func (r *XrayOutboundsResource) ModifyPlan(ctx context.Context, req resource.Mod
 // unrelated update, because the schema's UseStateForUnknown plan modifier can
 // only restore the object into the plan, not into a configuration that declared
 // nothing. Tag identifies an outbound across list reorders.
+//
+// When the configuration declares stream_settings and sockopt, the attributes
+// it omits inside sockopt are filled from state the same way (see
+// fillNullAttributesFromState): a removed dialer_proxy or a panel-managed key
+// must survive an unrelated outbound update.
 func mergeOutboundStreamSettingsFromState(configured, stateList types.List) types.List {
 	if configured.IsNull() || configured.IsUnknown() || len(configured.Elements()) == 0 {
 		return configured
@@ -1064,20 +1079,24 @@ func mergeOutboundStreamSettingsFromState(configured, stateList types.List) type
 			elems = append(elems, e)
 			continue
 		}
-		if ss, ok := attrs["stream_settings"]; ok && !ss.IsNull() && !ss.IsUnknown() {
-			elems = append(elems, e)
-			continue
-		}
 		saved, ok := stateByTag[tag.ValueString()]
 		if !ok {
 			elems = append(elems, e)
 			continue
 		}
+		streamSettings := saved
+		if ss, ok := attrs["stream_settings"]; ok && !ss.IsNull() {
+			streamSettings = mergeOutboundSockoptFromState(ss, saved)
+			if streamSettings.Equal(ss) {
+				elems = append(elems, e)
+				continue
+			}
+		}
 		merged := make(map[string]attr.Value, len(attrs)+1)
 		for k, v := range attrs {
 			merged[k] = v
 		}
-		merged["stream_settings"] = saved
+		merged["stream_settings"] = streamSettings
 		elems = append(elems, types.ObjectValueMust(obj.AttributeTypes(ctx), merged))
 		changed = true
 	}
@@ -1085,6 +1104,49 @@ func mergeOutboundStreamSettingsFromState(configured, stateList types.List) type
 		return configured
 	}
 	return types.ListValueMust(configured.ElementType(ctx), elems)
+}
+
+// mergeOutboundSockoptFromState fills the attributes a declared sockopt block
+// omits from the prior state's sockopt. A sockopt block removed from the
+// configuration stays removed: that is how the block is documented to clear.
+func mergeOutboundSockoptFromState(configured, saved attr.Value) attr.Value {
+	cfg, _ := configured.(types.Object)
+	prior, _ := saved.(types.Object)
+	cfgSockopt, _ := cfg.Attributes()["sockopt"].(types.Object)
+	priorSockopt, _ := prior.Attributes()["sockopt"].(types.Object)
+	filled := fillNullAttributesFromState(cfgSockopt, priorSockopt)
+	if filled.Equal(cfgSockopt) {
+		return configured
+	}
+	attrs := cfg.Attributes()
+	attrs["sockopt"] = filled
+	return types.ObjectValueMust(cfg.AttributeTypes(context.Background()), attrs)
+}
+
+// fillNullAttributesFromState mirrors UseStateForUnknown for an object whose
+// attributes are all Optional+Computed: a null (omitted) attribute takes the
+// state value, and declared nested objects are filled the same way. Lists are
+// taken whole, never merged per element. Unknown values are left alone.
+func fillNullAttributesFromState(configured, state types.Object) types.Object {
+	if configured.IsNull() || configured.IsUnknown() || state.IsNull() || state.IsUnknown() {
+		return configured
+	}
+	stateAttrs := state.Attributes()
+	attrs := configured.Attributes()
+	for k, v := range attrs {
+		sv := stateAttrs[k]
+		switch {
+		case sv == nil || sv.IsNull() || sv.IsUnknown():
+		case v.IsNull():
+			attrs[k] = sv
+		default:
+			if cfgObj, ok := v.(types.Object); ok {
+				stateObj, _ := sv.(types.Object)
+				attrs[k] = fillNullAttributesFromState(cfgObj, stateObj)
+			}
+		}
+	}
+	return types.ObjectValueMust(configured.AttributeTypes(context.Background()), attrs)
 }
 
 // ---------------------------------------------------------------------------

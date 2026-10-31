@@ -1,18 +1,43 @@
 {
-  "network": "tcp",
+  "network": "ws",
   "security": "none",
-  "tcpSettings": {
-    "acceptProxyProtocol": false,
-    "header": {
-      "type": "none"
-    }
+  "wsSettings": {
+    "path": "/ws"
   },
   "sockopt": {
     "mark": 255,
     "tcpKeepAliveInterval": 30,
+    "tcpKeepAliveIdle": 300,
+    "tcpUserTimeout": 10000,
+    "tcpMaxSeg": 1440,
+    "tcpWindowClamp": 600,
+    "tcpcongestion": "bbr",
     "tcpNoDelay": true,
     "tcpFastOpen": true,
+    "tcpMptcp": false,
     "tproxy": "redirect",
-    "domainStrategy": "UseIP"
+    "domainStrategy": "UseIP",
+    "acceptProxyProtocol": false,
+    "trustedXForwardedFor": ["X-Forwarded-For", "CF-Connecting-IP"],
+    "V6Only": false,
+    "interface": "eth0",
+    "dialerProxy": "",
+    "addressPortStrategy": "none",
+    "penetrate": false,
+    "happyEyeballs": {
+      "tryDelayMs": 250,
+      "prioritizeIPv6": false,
+      "interleave": 1,
+      "maxConcurrentTry": 4
+    },
+    "customSockopt": [
+      {
+        "system": "linux",
+        "level": "6",
+        "opt": "13",
+        "type": "str",
+        "value": "bbr"
+      }
+    ]
   }
 }
