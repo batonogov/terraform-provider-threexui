@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.30.0](https://github.com/batonogov/terraform-provider-threexui/compare/v3.29.0...v3.30.0) (2026-10-31)
+
+
+### Features
+
+* model all xray sockopt options incl. trusted_x_forwarded_for ([#480](https://github.com/batonogov/terraform-provider-threexui/issues/480)) ([4562b59](https://github.com/batonogov/terraform-provider-threexui/commit/4562b59ba3ca249ebb7658b81172f4c25c756f01))
+
 ## [3.29.0](https://github.com/batonogov/terraform-provider-threexui/compare/v3.28.0...v3.29.0) (2026-10-30)
 
 
