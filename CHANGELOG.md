@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.31.0](https://github.com/batonogov/terraform-provider-threexui/compare/v3.30.0...v3.31.0) (2026-11-04)
+
+
+### Features
+
+* add threexui_sub_balancer resource ([#482](https://github.com/batonogov/terraform-provider-threexui/issues/482)) ([e42b1d8](https://github.com/batonogov/terraform-provider-threexui/commit/e42b1d87191485f861f2b79a294971285d6d5879))
+
 ## [3.30.0](https://github.com/batonogov/terraform-provider-threexui/compare/v3.29.0...v3.30.0) (2026-10-31)
 
 
