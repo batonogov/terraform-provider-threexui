@@ -25,6 +25,7 @@ type upstreamContract struct {
 	StreamForms       []string `json:"stream_forms"`
 	InboundFields     []string `json:"inbound_fields"`
 	ClientFields      []string `json:"client_fields"`
+	SubBalancerFields []string `json:"sub_balancer_fields"`
 	AllSettingFields  []string `json:"all_setting_fields"`
 	XraySettingsPages []string `json:"xray_settings_pages"`
 }
@@ -875,6 +876,38 @@ func TestDriftClientFields(t *testing.T) {
 		"upstream Client struct has json fields not known to provider: %v")
 	checkRemoved(t, providerKnown, upstreamSet, clientIntentionallySkipped,
 		"provider knows Client fields not in upstream: %v")
+}
+
+// -------------------------------------------------------------------------
+// Test: upstream SubBalancer model fields vs provider SubBalancer struct
+// -------------------------------------------------------------------------
+
+// The update endpoint replaces the whole row, so an upstream field the
+// provider does not model would be reset by every terraform apply.
+func TestDriftSubBalancerFields(t *testing.T) {
+	providerFields := extractReflectJSONTags(reflect.TypeOf(SubBalancer{}))
+	// Row timestamps change on every write and would only add plan noise.
+	skip := map[string]bool{"createdAt": true, "updatedAt": true}
+
+	dir := latestSnapshotDir(t)
+	var upstream []string
+	if dir != "" {
+		data, err := os.ReadFile(upstreamGoPath(dir, "database", "model", "model.go"))
+		if err != nil {
+			t.Fatalf("cannot read model.go: %v", err)
+		}
+		upstream = extractStructJSONTags(t, string(data), "SubBalancer")
+	} else {
+		upstream = loadContract(t).SubBalancerFields
+	}
+	if len(upstream) == 0 {
+		t.Fatal("no upstream SubBalancer fields found")
+	}
+
+	checkMissing(t, upstream, providerFields, skip,
+		"upstream SubBalancer struct has json fields not in provider: %v")
+	checkRemoved(t, providerFields, toSet(upstream), skip,
+		"provider SubBalancer struct has json fields not in upstream: %v")
 }
 
 // -------------------------------------------------------------------------

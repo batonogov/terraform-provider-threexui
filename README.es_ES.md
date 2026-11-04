@@ -126,6 +126,7 @@ Las funciones de protocolos nuevos están protegidas con `requireMinVersion` y s
 | [Inbound + clientes](examples/inbound-with-client/) | Flujo completo: inbound + varios clientes |
 | [Nodo del clúster](examples/node/) | Registrar un panel 3x-ui remoto como nodo |
 | [Grupo de hosts](examples/host-group/) | Gestionar el enrutamiento masivo de hosts (v3.5.0+) |
+| [Balanceador de suscripción](examples/sub-balancer/) | Perfil de la suscripción JSON que balancea entre inbounds en el cliente (v3.7.0+) |
 | [Observatorio Xray](examples/observatory/) | Configurar sondas de latencia de outbounds (v3.4.2+) |
 | [Versión de Xray](examples/xray-version/) | Fijar la versión instalada de Xray core |
 | [Flota multi-servidor](examples/multi-server/) | Múltiples hosts 3x-ui con un módulo y `for_each` |
@@ -158,6 +159,7 @@ La documentación completa está en el [Terraform Registry](https://registry.ter
 | `threexui_panel_discord` | Notificaciones del bot de Discord (v3.8.0+) |
 | `threexui_host_group` | Enrutamiento de grupos de hosts (varios hosts por inbound) |
 | `threexui_panel_subscription` | Ajustes del servicio de suscripción |
+| `threexui_sub_balancer` | Balanceador del lado del cliente en la suscripción JSON (v3.7.0+) |
 | `threexui_xray_basics` | Configuración base de Xray (log, policy, api, stats) |
 | `threexui_xray_dns` | Servidores y hosts DNS |
 | `threexui_xray_routing` | Reglas de enrutamiento |

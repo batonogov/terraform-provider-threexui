@@ -126,6 +126,7 @@ resource "threexui_inbound_client" "client_a" {
 | [Инбаунд + клиенты](examples/inbound-with-client/) | Полный сценарий: инбаунд + несколько клиентов |
 | [Узел кластера](examples/node/) | Регистрация удалённой панели 3x-ui как узла кластера |
 | [Группа хостов](examples/host-group/) | Массовое управление маршрутизацией хостов (v3.5.0+) |
+| [Балансировщик подписки](examples/sub-balancer/) | Профиль JSON-подписки с клиентской балансировкой между инбаундами (v3.7.0+) |
 | [Xray Observatory](examples/observatory/) | Настройка проверок задержки аутбаундов (v3.4.2+) |
 | [Версия Xray](examples/xray-version/) | Фиксация установленной версии Xray core |
 | [Флот серверов](examples/multi-server/) | Управление несколькими 3x-ui через переиспользуемый модуль и `for_each` |
@@ -158,6 +159,7 @@ resource "threexui_inbound_client" "client_a" {
 | `threexui_panel_discord` | Discord-уведомления через бота (v3.8.0+) |
 | `threexui_host_group` | Маршрутизация групп хостов (несколько хостов на инбаунд) |
 | `threexui_panel_subscription` | Настройки подписочного сервиса |
+| `threexui_sub_balancer` | Клиентский балансировщик в JSON-подписке (v3.7.0+) |
 | `threexui_xray_basics` | Базовый Xray (log, policy, api, stats) |
 | `threexui_xray_dns` | DNS-серверы и hosts |
 | `threexui_xray_routing` | Правила маршрутизации |

@@ -132,6 +132,7 @@ resource "threexui_inbound_client" "client_a" {
 | [Inbound + عملاء](examples/inbound-with-client/) | تدفق كامل: inbound + كذا عميل |
 | [عقدة الكتلة](examples/node/) | تسجيل لوحة 3x-ui بعيدة كعقدة |
 | [مجموعة hosts](examples/host-group/) | إدارة توجيه hosts بالجملة (v3.5.0+) |
+| [balancer الاشتراك](examples/sub-balancer/) | ملف تعريف في اشتراك JSON يوازن بين inbounds من جهة العميل (v3.7.0+) |
 | [Xray Observatory](examples/observatory/) | إعداد فحوصات زمن وصول outbounds (v3.4.2+) |
 | [إصدار Xray](examples/xray-version/) | تثبيت إصدار Xray core المُثبّت |
 | [أسطول متعدد السيرفرات](examples/multi-server/) | إدارة كذا 3x-ui من خلال module و `for_each` |
@@ -164,6 +165,7 @@ resource "threexui_inbound_client" "client_a" {
 | `threexui_panel_discord` | إشعارات بوت Discord (v3.8.0+) |
 | `threexui_host_group` | توجيه مجموعات hosts (أكثر من host لكل inbound) |
 | `threexui_panel_subscription` | إعدادات خدمة الاشتراك |
+| `threexui_sub_balancer` | balancer من جهة العميل في اشتراك JSON (v3.7.0+) |
 | `threexui_xray_basics` | إعدادات Xray الأساسية (log, policy, api, stats) |
 | `threexui_xray_dns` | سيرفرات و hosts الـ DNS |
 | `threexui_xray_routing` | قواعد التوجيه |

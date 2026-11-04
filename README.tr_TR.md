@@ -126,6 +126,7 @@ Daha yeni protokol özellikleri `requireMinVersion` ile korunur ve eski sürüml
 | [İstemcili inbound](examples/inbound-with-client/) | Tam iş akışı: inbound + birden fazla istemci |
 | [Küme düğümü](examples/node/) | Uzak bir 3x-ui panelini küme düğümü olarak kaydetme |
 | [Host grubu](examples/host-group/) | Toplu host yönlendirmesini yönetme (v3.5.0+) |
+| [Abonelik dengeleyicisi](examples/sub-balancer/) | İstemcide inbound'lar arasında dengeleme yapan JSON abonelik profili (v3.7.0+) |
 | [Xray Observatory](examples/observatory/) | Outbound gecikme problarını yapılandırma (v3.4.2+) |
 | [Xray sürümü](examples/xray-version/) | Kurulu Xray core sürümünü sabitleme |
 | [Çok sunuculu filo](examples/multi-server/) | Yeniden kullanılabilir modül + `for_each` ile birden fazla 3x-ui barındırmasını yönetme |
@@ -158,6 +159,7 @@ Tam belgeler [Terraform Registry](https://registry.terraform.io/providers/batono
 | `threexui_panel_discord` | Discord bot bildirimleri (v3.8.0+) |
 | `threexui_host_group` | Host grubu yönlendirmesi (inbound başına birden fazla host) |
 | `threexui_panel_subscription` | Abonelik hizmeti ayarları |
+| `threexui_sub_balancer` | JSON aboneliğinde istemci tarafı yük dengeleyici (v3.7.0+) |
 | `threexui_xray_basics` | Temel Xray yapılandırması (log, policy, api, stats) |
 | `threexui_xray_dns` | DNS sunucuları ve hosts |
 | `threexui_xray_routing` | Yönlendirme kuralları |

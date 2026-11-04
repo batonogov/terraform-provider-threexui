@@ -149,7 +149,8 @@ Current version gates:
 - **v3.4.2+**: WireGuard multi-client fields, LDAP TLS verification control, and Xray Observatory/BurstObservatory.
 - **v3.5.0+**: host groups, MTProto per-client FakeTLS fields, Xray environment variables, outbound target strategy, and expanded balancer settings.
 - **v3.6.0+**: inbound `traffic_reset_day`, SMTP `From` header, subscription format auto-detection, and node `api_token_wo`.
-- **v3.7.0+**: inbound `disable_flow`, per-client calendar renewals (`reset_day`, `reset_max`) and traffic reset cycle (`traffic_reset`, `traffic_reset_day`), panel `ip_limit_allowlist`, and subscription `sub_json_observatory`.
+- **v3.7.0+**: inbound `disable_flow`, per-client calendar renewals (`reset_day`, `reset_max`) and traffic reset cycle (`traffic_reset`, `traffic_reset_day`), panel `ip_limit_allowlist`, subscription `sub_json_observatory`, and the `threexui_sub_balancer` resource (JSON-subscription balancers; older panels fail with an error naming the version).
+- **v3.8.0+**: `threexui_sub_balancer` `member_weights` (v3.7.x discards them, so the provider fails the apply instead of storing a balancer without them).
 - **v3.11.0+**: `node_down_threshold`, `sub_host_sort_mode`, `sub_clash_remote_dns`, host-group SNI pools/CIDR counts, client host bindings, AmneziaWG kernel mode and keepalive ranges, and node `unavailable_metrics`.
 
 Tests without `requireMinVersion` run on all supported versions (v3.3.0+).

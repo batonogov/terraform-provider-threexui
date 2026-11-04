@@ -126,6 +126,7 @@ resource "threexui_inbound_client" "client_a" {
 | [inbound + 客户端](examples/inbound-with-client/) | 完整流程:inbound + 多个客户端 |
 | [集群节点](examples/node/) | 将远程 3x-ui 面板注册为集群节点 |
 | [主机组](examples/host-group/) | 管理批量主机路由 (v3.5.0+) |
+| [订阅负载均衡](examples/sub-balancer/) | 在客户端于多个 inbound 之间负载均衡的 JSON 订阅配置 (v3.7.0+) |
 | [Xray Observatory](examples/observatory/) | 配置 outbound 延迟探测 (v3.4.2+) |
 | [Xray 版本](examples/xray-version/) | 固定已安装的 Xray core 版本 |
 | [多服务器集群](examples/multi-server/) | 通过模块 + `for_each` 管理多台 3x-ui |
@@ -158,6 +159,7 @@ resource "threexui_inbound_client" "client_a" {
 | `threexui_panel_discord` | Discord 机器人通知 (v3.8.0+) |
 | `threexui_host_group` | 主机组路由（每个 inbound 可有多个主机） |
 | `threexui_panel_subscription` | 订阅服务设置 |
+| `threexui_sub_balancer` | JSON 订阅中的客户端负载均衡 (v3.7.0+) |
 | `threexui_xray_basics` | Xray 基础配置(log、policy、api、stats) |
 | `threexui_xray_dns` | DNS 服务器和 hosts |
 | `threexui_xray_routing` | 路由规则 |
