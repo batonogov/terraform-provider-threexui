@@ -126,6 +126,7 @@ Newer protocol features are guarded with `requireMinVersion` and skip automatica
 | [Inbound with clients](examples/inbound-with-client/) | Complete workflow: inbound + multiple clients |
 | [Cluster node](examples/node/) | Register a remote 3x-ui panel as a cluster node |
 | [Host group](examples/host-group/) | Manage bulk host routing (v3.5.0+) |
+| [Subscription balancer](examples/sub-balancer/) | Balance a JSON-subscription profile across inbounds on the client (v3.7.0+) |
 | [Xray observatory](examples/observatory/) | Configure outbound latency probes (v3.4.2+) |
 | [Xray version](examples/xray-version/) | Pin the installed Xray core version |
 | [Multi-server fleet](examples/multi-server/) | Manage many 3x-ui hosts via a reusable module + `for_each` |
@@ -158,6 +159,7 @@ Full documentation is available on the [Terraform Registry](https://registry.ter
 | `threexui_panel_discord` | Discord bot notifications (v3.8.0+) |
 | `threexui_host_group` | Host group routing (multi-host per inbound) |
 | `threexui_panel_subscription` | Subscription service settings |
+| `threexui_sub_balancer` | Client-side balancer in the JSON subscription (v3.7.0+) |
 | `threexui_xray_basics` | Basic Xray config (log, policy, api, stats) |
 | `threexui_xray_dns` | DNS servers and hosts |
 | `threexui_xray_routing` | Routing rules |

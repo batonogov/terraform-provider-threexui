@@ -132,6 +132,7 @@ resource "threexui_inbound_client" "client_a" {
 | [اینباند + کلاینت‌ها](examples/inbound-with-client/) | جریان کامل: اینباند + چندین کلاینت |
 | [گره کلاستر](examples/node/) | ثبت پنل راه‌دور 3x-ui به‌عنوان گره کلاستر |
 | [گروه هاست](examples/host-group/) | مدیریت مسیریابی گروهی هاست‌ها (v3.5.0+) |
+| [بالانسر subscription](examples/sub-balancer/) | پروفایل subscription JSON با بالانس سمت کلاینت بین اینباندها (v3.7.0+) |
 | [Observatory اکس‌ری](examples/observatory/) | پیکربندی سنجش تأخیر اوت‌باندها (v3.4.2+) |
 | [نسخهٔ Xray](examples/xray-version/) | ثابت‌کردن نسخهٔ نصب‌شدهٔ Xray core |
 | [ناوگان چند سروری](examples/multi-server/) | مدیریت چندین هاست 3x-ui با ماژول و `for_each` |
@@ -164,6 +165,7 @@ resource "threexui_inbound_client" "client_a" {
 | `threexui_panel_discord` | اعلان‌های بات Discord (v3.8.0+) |
 | `threexui_host_group` | مسیریابی گروه هاست‌ها (چند هاست برای هر اینباند) |
 | `threexui_panel_subscription` | تنظیمات سرویس subscription |
+| `threexui_sub_balancer` | بالانسر سمت کلاینت در subscription JSON (v3.7.0+) |
 | `threexui_xray_basics` | پیکربندی پایهٔ Xray (log, policy, api, stats) |
 | `threexui_xray_dns` | سرورها و hostهای DNS |
 | `threexui_xray_routing` | قوانین routing |

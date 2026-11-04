@@ -750,6 +750,114 @@ func (c *Client) DeleteHostGroup(ctx context.Context, groupID string) error {
 	return c.doJSON(ctx, http.MethodPost, fmt.Sprintf("panel/api/hosts/del/%s", groupID), nil, nil)
 }
 
+const subBalancersPath = "panel/api/sub-balancers"
+
+// ListSubBalancers returns every JSON-subscription balancer (GET
+// /panel/api/sub-balancers, 3x-ui v3.7.0+). There is no get-by-id route.
+func (c *Client) ListSubBalancers(ctx context.Context) ([]SubBalancer, error) {
+	var out []SubBalancer
+	if err := c.doJSON(ctx, http.MethodGet, subBalancersPath, nil, &out); err != nil {
+		return nil, subBalancerAPIError(err)
+	}
+	return out, nil
+}
+
+// GetSubBalancer finds a balancer in the list; (nil, nil) means it is gone.
+func (c *Client) GetSubBalancer(ctx context.Context, id int64) (*SubBalancer, error) {
+	balancers, err := c.ListSubBalancers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range balancers {
+		if balancers[i].Id == id {
+			return &balancers[i], nil
+		}
+	}
+	return nil, nil
+}
+
+// CreateSubBalancer form-POSTs /panel/api/sub-balancers and returns the stored
+// row. Not retried: a repeated POST would create a second balancer.
+func (c *Client) CreateSubBalancer(ctx context.Context, b *SubBalancer) (*SubBalancer, error) {
+	form, err := subBalancerToForm(b)
+	if err != nil {
+		return nil, err
+	}
+	var out SubBalancer
+	if err := c.doForm(ctx, http.MethodPost, subBalancersPath, form, &out); err != nil {
+		return nil, subBalancerAPIError(err)
+	}
+	if out.Id < 1 {
+		return nil, errors.New("sub balancer create returned no balancer id")
+	}
+	return &out, nil
+}
+
+// UpdateSubBalancer form-POSTs /panel/api/sub-balancers/:id, which rewrites
+// every field it reads from the form, and returns the stored row.
+func (c *Client) UpdateSubBalancer(ctx context.Context, id int64, b *SubBalancer) (*SubBalancer, error) {
+	form, err := subBalancerToForm(b)
+	if err != nil {
+		return nil, err
+	}
+	var out SubBalancer
+	if err := c.doFormRetryable(ctx, http.MethodPost, fmt.Sprintf("%s/%d", subBalancersPath, id), form, &out); err != nil {
+		return nil, subBalancerAPIError(err)
+	}
+	if out.Id != id {
+		return nil, fmt.Errorf("sub balancer update returned balancer %d, expected %d", out.Id, id)
+	}
+	return &out, nil
+}
+
+// DeleteSubBalancer POSTs /panel/api/sub-balancers/:id/del. A retry after a
+// 5xx that already deleted the row reports "sub balancer not found".
+func (c *Client) DeleteSubBalancer(ctx context.Context, id int64) error {
+	err := c.doFormRetryable(ctx, http.MethodPost, fmt.Sprintf("%s/%d/del", subBalancersPath, id), url.Values{}, nil)
+	return subBalancerAPIError(err)
+}
+
+// subBalancerToForm builds the urlencoded body: the controller reads
+// inboundIds with PostFormArray, so a JSON body arrives without inbounds.
+func subBalancerToForm(b *SubBalancer) (url.Values, error) {
+	if b == nil {
+		return nil, errors.New("sub balancer is nil")
+	}
+	form := url.Values{}
+	form.Set("remark", b.Remark)
+	form.Set("strategy", b.Strategy)
+	form.Set("sortOrder", strconv.FormatInt(b.SortOrder, 10))
+	// Update keeps the stored flag when the key is absent.
+	form.Set("enabled", strconv.FormatBool(b.Enabled))
+	for _, id := range b.InboundIds {
+		form.Add("inboundIds", strconv.FormatInt(id, 10))
+	}
+	// Update clears the stored weights when the key is absent.
+	if len(b.MemberWeights) > 0 {
+		weights, err := json.Marshal(b.MemberWeights)
+		if err != nil {
+			return nil, fmt.Errorf("encoding member weights: %w", err)
+		}
+		form.Set("memberWeights", string(weights))
+	}
+	return form, nil
+}
+
+// subBalancerAPIError explains the 404 every route answers on panels that
+// predate the API.
+func subBalancerAPIError(err error) error {
+	if isHTTPNotFound(err) {
+		return fmt.Errorf("threexui_sub_balancer requires 3x-ui v3.7.0 or later: the panel has no /%s API (%w)", subBalancersPath, err)
+	}
+	return err
+}
+
+// isSubBalancerNotFound matches the panel's Delete error for a missing row
+// (HTTP 200, success:false).
+func isSubBalancerNotFound(err error) bool {
+	return err != nil && strings.Contains(strings.ToLower(err.Error()), "sub balancer not found")
+}
+
 // nodeToForm builds the application/x-www-form-urlencoded body for node
 // create/update, mirroring the form tags on model.Node in 3x-ui. inboundTags
 // is serialized to a JSON string (gorm json serializer on the upstream side).

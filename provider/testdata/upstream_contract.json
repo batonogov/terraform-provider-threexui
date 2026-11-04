@@ -126,6 +126,17 @@
     "trafficResetDay",
     "updated_at"
   ],
+  "sub_balancer_fields": [
+    "createdAt",
+    "enabled",
+    "id",
+    "inboundIds",
+    "memberWeights",
+    "remark",
+    "sortOrder",
+    "strategy",
+    "updatedAt"
+  ],
   "all_setting_fields": [
     "datepicker",
     "discordAdminIds",
