@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.32.0](https://github.com/batonogov/terraform-provider-threexui/compare/v3.31.0...v3.32.0) (2026-11-06)
+
+
+### Features
+
+* add xmux block to xhttp_settings ([#484](https://github.com/batonogov/terraform-provider-threexui/issues/484)) ([f273bb2](https://github.com/batonogov/terraform-provider-threexui/commit/f273bb2e100fd02499e34d1032ada1100a49959d))
+
 ## [3.31.0](https://github.com/batonogov/terraform-provider-threexui/compare/v3.30.0...v3.31.0) (2026-11-04)
 
 
