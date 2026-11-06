@@ -20,6 +20,7 @@ jobs:
     outputs:
       matrix: ${{ steps.set.outputs.matrix }}
       versions: ${{ steps.set.outputs.versions }}
+      terraform_default: ${{ steps.set.outputs.terraform_default }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - id: set
@@ -28,6 +29,7 @@ jobs:
           VERSIONS=$(jq -r '[.versions[] | select(.supported == true) | .version] | join(" ")' compat-versions.json)
           echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
           echo "versions=$VERSIONS" >> "$GITHUB_OUTPUT"
+          echo "terraform_default=$(jq -er .default_version terraform-versions.json)" >> "$GITHUB_OUTPUT"
 
   compat:
     name: Compat (${{ matrix.version }})
@@ -48,6 +50,7 @@ jobs:
       - name: Install Terraform
         uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
         with:
+          terraform_version: ${{ needs.prepare-matrix.outputs.terraform_default }}
           terraform_wrapper: false
       - name: Install Task
         uses: arduino/setup-task@c0bc642852239c2689f73f4ea6459c29405f3c52 # v2
