@@ -121,16 +121,17 @@ type InboundHTTPUpgradeSettingsModel struct {
 }
 
 type InboundXHTTPSettingsModel struct {
-	Path              types.String `tfsdk:"path"`
-	Mode              types.String `tfsdk:"mode"`
-	NoSSEHeader       types.Bool   `tfsdk:"no_sse_header"`
-	KeepAliveInterval types.Int64  `tfsdk:"keep_alive_interval"`
-	XPaddingBytes     types.String `tfsdk:"x_padding_bytes"`
-	XPaddingObfsMode  types.Bool   `tfsdk:"x_padding_obfs_mode"`
-	XPaddingKey       types.String `tfsdk:"x_padding_key"`
-	XPaddingHeader    types.String `tfsdk:"x_padding_header"`
-	XPaddingPlacement types.String `tfsdk:"x_padding_placement"`
-	XPaddingMethod    types.String `tfsdk:"x_padding_method"`
+	Path              types.String      `tfsdk:"path"`
+	Mode              types.String      `tfsdk:"mode"`
+	NoSSEHeader       types.Bool        `tfsdk:"no_sse_header"`
+	KeepAliveInterval types.Int64       `tfsdk:"keep_alive_interval"`
+	XPaddingBytes     types.String      `tfsdk:"x_padding_bytes"`
+	XPaddingObfsMode  types.Bool        `tfsdk:"x_padding_obfs_mode"`
+	XPaddingKey       types.String      `tfsdk:"x_padding_key"`
+	XPaddingHeader    types.String      `tfsdk:"x_padding_header"`
+	XPaddingPlacement types.String      `tfsdk:"x_padding_placement"`
+	XPaddingMethod    types.String      `tfsdk:"x_padding_method"`
+	Xmux              *InboundXmuxModel `tfsdk:"xmux"`
 }
 
 type InboundKCPSettingsModel struct {
@@ -624,6 +625,9 @@ func inboundStreamSettingsBlockSchema() schema.SingleNestedBlock {
 						},
 					},
 				},
+				Blocks: map[string]schema.Block{
+					"xmux": xmuxBlockSchema(),
+				},
 			},
 			"kcp_settings": schema.SingleNestedBlock{
 				Description: "mKCP transport settings.",
@@ -1035,6 +1039,9 @@ func expandXHTTPSettingsFromModel(m *InboundXHTTPSettingsModel) map[string]any {
 	}
 	if !m.XPaddingMethod.IsNull() && !m.XPaddingMethod.IsUnknown() {
 		out["x_padding_method"] = m.XPaddingMethod.ValueString()
+	}
+	if m.Xmux != nil {
+		out["xmux"] = []any{expandXmuxFromModel(m.Xmux)}
 	}
 	return out
 }
@@ -1530,6 +1537,11 @@ func flattenXHTTPSettingsToModel(data map[string]any) *InboundXHTTPSettingsModel
 		m.XPaddingMethod = types.StringValue(v)
 	} else {
 		m.XPaddingMethod = types.StringNull()
+	}
+	if v, ok := data["xmux"].([]any); ok && len(v) > 0 {
+		if raw, ok := v[0].(map[string]any); ok {
+			m.Xmux = flattenXmuxToModel(raw)
+		}
 	}
 	return m
 }

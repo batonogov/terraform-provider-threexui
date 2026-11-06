@@ -3,6 +3,7 @@ package provider
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 )
@@ -787,6 +788,62 @@ func expandXHTTPSettings(list []any) map[string]any {
 	if v, ok := item["x_padding_method"].(string); ok && v != "" {
 		out["xPaddingMethod"] = v
 	}
+	if v, ok := item["xmux"].([]any); ok && len(v) > 0 {
+		out["xmux"] = expandXmux(v)
+	}
+	return out
+}
+
+// xray-core reads these as Int32Range, which accepts a JSON number or a
+// "from-to" string.
+var xmuxRangeWireKeys = map[string]string{
+	"max_concurrency":     "maxConcurrency",
+	"max_connections":     "maxConnections",
+	"c_max_reuse_times":   "cMaxReuseTimes",
+	"h_max_request_times": "hMaxRequestTimes",
+	"h_max_reusable_secs": "hMaxReusableSecs",
+}
+
+// expandXmux always returns an object: an empty block is written as {},
+// which xray-core fills with its defaults.
+func expandXmux(list []any) map[string]any {
+	out := map[string]any{}
+	item, _ := list[0].(map[string]any)
+	for snake, wire := range xmuxRangeWireKeys {
+		// Strings, as written in the panel form: its schema rejects numbers
+		// for maxConcurrency, hMaxRequestTimes and hMaxReusableSecs.
+		if v, ok := item[snake].(string); ok {
+			out[wire] = v
+		}
+	}
+	// int64 on the xray-core side, so it must stay a JSON number.
+	if v, ok := item["h_keep_alive_period"]; ok {
+		out["hKeepAlivePeriod"] = int64Value(v)
+	}
+	return out
+}
+
+// flattenXmux reads zeros as unset, as xray-core does: the 3x-ui form backfills
+// missing fields with 0 or "" when an inbound is saved there.
+func flattenXmux(in map[string]any) map[string]any {
+	out := map[string]any{}
+	for snake, wire := range xmuxRangeWireKeys {
+		switch v := in[wire].(type) {
+		case string:
+			if v != "" && v != "0" && v != "0-0" {
+				out[snake] = v
+			}
+		case float64:
+			if v != 0 {
+				out[snake] = strconv.FormatFloat(v, 'f', -1, 64)
+			}
+		}
+	}
+	// A fractional or string value fails the xray-core int64 decode, so it
+	// reads as unset and the next write replaces it.
+	if v, ok := in["hKeepAlivePeriod"].(float64); ok && v != 0 && v == math.Trunc(v) {
+		out["h_keep_alive_period"] = int64(v)
+	}
 	return out
 }
 
@@ -821,6 +878,9 @@ func flattenXHTTPSettings(in map[string]any) map[string]any {
 	}
 	if v, ok := in["xPaddingMethod"].(string); ok {
 		out["x_padding_method"] = v
+	}
+	if v, ok := in["xmux"].(map[string]any); ok {
+		out["xmux"] = []any{flattenXmux(v)}
 	}
 	return out
 }

@@ -1609,6 +1609,8 @@ func alignBlocksWithPlan(state *InboundResourceModel, plan *InboundResourceModel
 		}
 		if plan.StreamSettings.XHTTPSettings == nil {
 			state.StreamSettings.XHTTPSettings = nil
+		} else if state.StreamSettings.XHTTPSettings != nil && plan.StreamSettings.XHTTPSettings.Xmux == nil {
+			state.StreamSettings.XHTTPSettings.Xmux = nil
 		}
 		if plan.StreamSettings.KCPSettings == nil {
 			state.StreamSettings.KCPSettings = nil

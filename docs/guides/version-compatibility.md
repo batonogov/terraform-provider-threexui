@@ -144,7 +144,7 @@ Current version gates:
 - **v3.2.7+**: `tun` is available as an alias for the tunnel inbound.
 - **v3.3.0+** (matrix floor): `subThemeDir` and `warpUpdateInterval` settings; node-sync multi-node surface.
 - **v3.3.1+**: inbound `subSortIndex`, `shareAddr`/`shareAddrStrategy`; `panelProxy` renamed to `panelOutbound` (outbound egress bridge).
-- **v3.4.0+**: SMTP notifications; expanded Telegram and subscription settings.
+- **v3.4.0+**: SMTP notifications; expanded Telegram and subscription settings; an inbound's `xhttp_settings.xmux` is left out of the panel's own Xray configuration and replaces `sub_json_mux` in the JSON subscription (v3.3.x passes it to the panel's Xray and adds `sub_json_mux` as well).
 - **v3.4.1+**: Incy client routing injection in subscription output.
 - **v3.4.2+**: WireGuard multi-client fields, LDAP TLS verification control, and Xray Observatory/BurstObservatory.
 - **v3.5.0+**: host groups, MTProto per-client FakeTLS fields, Xray environment variables, outbound target strategy, and expanded balancer settings.

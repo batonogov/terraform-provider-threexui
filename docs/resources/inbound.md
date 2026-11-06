@@ -143,6 +143,46 @@ firewall) **and** that proxy overwrites `X-Forwarded-For` with the peer address
 `X-Forwarded-For`, so behind Cloudflare alone the first entry can be forged —
 listing `CF-Connecting-IP` does not change which value xray reads.
 
+### XHTTP with client connection limits (XMUX)
+
+The panel's own Xray does not use an inbound's `xmux`: 3x-ui hands it to clients
+through subscriptions, so it sets how many connections each client opens to the
+server and how often it replaces them. That matters where a middlebox penalises
+many parallel TLS connections to one address.
+
+```hcl
+resource "threexui_inbound" "xhttp" {
+  listen   = "127.0.0.1" # TLS is terminated by the reverse proxy in front
+  port     = 10001
+  protocol = "vless"
+  enable   = true
+  remark   = "VLESS XHTTP"
+
+  vless_settings {
+    decryption = "none"
+  }
+
+  stream_settings {
+    network  = "xhttp"
+    security = "none"
+    xhttp_settings {
+      mode = "stream-up"
+      path = "/xhttp"
+
+      xmux {
+        max_connections     = "2"
+        h_max_request_times = "6000-9000"
+        h_max_reusable_secs = "1800-3000"
+      }
+    }
+  }
+}
+```
+
+Setting any XMUX attribute switches off every xray-core default, so keep a
+rotation limit next to `max_connections`, and size the reverse proxy for the
+request counts above. See [`xmux`](#xmux-optional-block).
+
 ### HTTP Proxy with Authentication
 
 ```hcl
@@ -552,6 +592,7 @@ Unlike AmneziaWG, the panel generates nothing here: the `certificate` / `private
   - `x_padding_header` (Optional, String) - xPadding header name.
   - `x_padding_placement` (Optional, String) - xPadding placement (e.g. `header`, `body`).
   - `x_padding_method` (Optional, String) - xPadding method (e.g. `aes`).
+  - `xmux` (Optional, Block) - Connection reuse of XHTTP clients (xray `xmux`). See [`xmux`](#xmux-optional-block) below.
 - `kcp_settings` (Optional, Block) - mKCP settings.
   - `mtu` (Optional, Number)
   - `tti` (Optional, Number)
@@ -618,6 +659,58 @@ Unlike AmneziaWG, the panel generates nothing here: the `certificate` / `private
   - `remark` (Optional, String)
   - `force_tls` (Optional, String)
 - `sockopt` (Optional, Block) - Socket options (xray `sockopt`). See [`sockopt`](#sockopt-optional-block) below.
+
+#### `xmux` (Optional, Block)
+
+XMUX settings written to `streamSettings.xhttpSettings.xmux`: how the side that
+dials XHTTP spreads requests over connections and when it retires them. The
+block is shared with `threexui_xray_outbounds`, where it applies to the panel's
+own Xray when it dials the outbound.
+
+On an inbound these are **client** settings. 3x-ui v3.4.0+ removes `xmux` from
+the configuration of its own Xray, which does not use it, and hands it to
+clients: the JSON subscription copies it into the outbound's `xhttpSettings`,
+share links carry it in the `extra` parameter, and Clash subscriptions turn it
+into `reuse-settings`. While an inbound has an `xmux` block, even an empty one,
+the JSON subscription leaves out the global `sub_json_mux` (mux.cool) for it; a
+host's `mux_params` (`threexui_host_group`) still applies. 3x-ui v3.3.x passes
+`xmux` to its own Xray as well and adds `sub_json_mux` regardless.
+
+xray-core applies its defaults only to an empty object: `xmux {}` is written as
+`{}` and selects them (since xray-core v26.7.28 `maxConnections` 3, previously 6,
+with `hMaxRequestTimes` 600-900 and `hMaxReusableSecs` 1800-3000). Setting any
+attribute switches off **all** of them, so a block with only `max_connections`
+keeps its connections open indefinitely: add `h_max_request_times`,
+`h_max_reusable_secs` or `c_max_reuse_times` to keep them rotating.
+
+Unlike the rest of `stream_settings`, the attributes are not `Computed`: removing
+one from the configuration removes it from the panel, and removing the block
+removes `xmux`. xray-core reads `0` as unset, so the provider rejects an explicit
+`0` (omit the attribute instead), and the zeros and empty strings the 3x-ui form
+fills in when the inbound is saved there read back as unset. Like other
+`stream_settings` blocks, an `xmux` added in the panel to an inbound whose
+configuration has no `xmux` block is not shown by `plan` and is removed by the
+next update of the inbound; declare the block to manage it.
+
+Ranges are strings: a positive integer (`"2"`) or a `from-to` range (`"16-32"`)
+with bounds up to 2147483647. xray-core picks a random value from a range once
+for `max_connections` and `max_concurrency`, and anew for every connection for
+the other three.
+
+- `max_connections` (Optional, String) - Connections to open and spread requests over. Mutually exclusive with `max_concurrency`: xray-core refuses a configuration that sets both, which on an inbound breaks the configuration of every subscription client, so the provider rejects it at plan time.
+- `max_concurrency` (Optional, String) - Requests one connection carries at a time; when every connection is at the limit another one is opened, so the number of connections is not bounded.
+- `c_max_reuse_times` (Optional, String) - Retire a connection after it has served this many proxied connections.
+- `h_max_request_times` (Optional, String) - Retire a connection after this many HTTP requests.
+- `h_max_reusable_secs` (Optional, String) - Stop reusing a connection this many seconds after it was opened.
+- `h_keep_alive_period` (Optional, Number) - Seconds of silence after which an HTTP/2 connection is checked with a PING (HTTP/3: the QUIC keep-alive period). Unset uses the xray-core default, 45 for HTTP/2 and 10 for HTTP/3; a negative value disables the check.
+
+~> **Behind a reverse proxy** XMUX limits only the connections a client opens on
+its own. When nginx reaches `keepalive_requests` (1000 by default) on a
+connection it closes it with GOAWAY, and when a client reaches
+`http2_max_concurrent_streams` (128 by default) its HTTP/2 stack opens another
+connection; both bypass `max_connections` (one test setup saw 5 and 6 sockets
+instead of 2). Set `keepalive_requests` above the upper bound of
+`h_max_request_times` and leave headroom in `http2_max_concurrent_streams`.
 
 #### `sockopt` (Optional, Block)
 
