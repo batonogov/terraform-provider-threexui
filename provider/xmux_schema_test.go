@@ -391,6 +391,12 @@ func TestAlignBlocksWithPlan_Xmux(t *testing.T) {
 		t.Fatal("xmux present in the plan must be kept")
 	}
 
+	state = stored()
+	alignBlocksWithPlan(state, &InboundResourceModel{StreamSettings: &InboundStreamSettingsModel{}})
+	if state.StreamSettings.XHTTPSettings != nil {
+		t.Fatalf("xhttp_settings absent from the plan must be dropped with its xmux: %+v", state.StreamSettings.XHTTPSettings)
+	}
+
 	// The panel can omit xhttpSettings while the plan declares the block.
 	state = &InboundResourceModel{StreamSettings: &InboundStreamSettingsModel{}}
 	alignBlocksWithPlan(state, withXHTTP(nil))
