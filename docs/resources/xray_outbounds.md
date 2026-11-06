@@ -115,6 +115,13 @@ server. An omitted block is persisted from state on unrelated updates, and is
   - `x_padding_header` (String, Optional)
   - `x_padding_placement` (String, Optional) - xPadding placement (e.g. `header`, `body`).
   - `x_padding_method` (String, Optional)
+  - `xmux` (Block, Optional, Max: 1) - XMUX: how the panel's own Xray spreads its requests to this outbound over connections and when it retires them. Fields, value format and validation as on [`threexui_inbound`](inbound.md#xmux-optional-block). An empty block is written as `{}` and selects the xray-core defaults; setting any attribute switches off all of them, so keep a rotation limit next to `max_connections`. The attributes are not refilled from state: removing one, or the block, removes it from the outbound (an omitted `stream_settings` block is kept whole, `xmux` included).
+    - `max_connections` (String, Optional) - Connections to open. Mutually exclusive with `max_concurrency`; xray-core cannot load a configuration with both.
+    - `max_concurrency` (String, Optional) - Requests per connection before another one is opened.
+    - `c_max_reuse_times` (String, Optional) - Proxied connections a connection serves before it is retired.
+    - `h_max_request_times` (String, Optional) - HTTP requests before a connection is retired.
+    - `h_max_reusable_secs` (String, Optional) - Seconds after which a connection is no longer reused.
+    - `h_keep_alive_period` (Int, Optional) - Seconds of silence before an HTTP/2 connection is checked with a PING (HTTP/3: the QUIC keep-alive period); negative disables the check.
 - `kcp_settings` (Block, Optional, Max: 1) - mKCP settings.
   - `mtu` (Int, Optional)
   - `tti` (Int, Optional)

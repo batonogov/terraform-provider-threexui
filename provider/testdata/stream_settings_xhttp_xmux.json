@@ -1,0 +1,16 @@
+{
+  "network": "xhttp",
+  "security": "none",
+  "xhttpSettings": {
+    "path": "/xhttp-xmux",
+    "mode": "stream-up",
+    "xmux": {
+      "maxConcurrency": "",
+      "maxConnections": 3,
+      "cMaxReuseTimes": 0,
+      "hMaxRequestTimes": "6000-9000",
+      "hMaxReusableSecs": "1800-3000",
+      "hKeepAlivePeriod": 0
+    }
+  }
+}
