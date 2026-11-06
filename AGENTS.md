@@ -490,6 +490,17 @@ Imperative mood, concise subjects.
 - Unit tests: `TestXxx` naming, table-driven where practical.
 - Acceptance tests: `TestAccXxx`, `terraform-plugin-testing`,
   `ProtoV6ProviderFactories` (not `ProviderFactories`).
+- **Terraform CLI support:** `terraform-versions.json` is the source of truth
+  for supported Terraform releases. Support only the **two newest stable minor
+  lines**, testing the latest patch of each; older lines and prereleases are
+  outside the support policy. On a new stable minor release, add its latest patch,
+  drop the oldest line, and set `default_version` to the newest entry. Update
+  patch pins when fixes are released. Review upstream release notes before updating.
+  CI reads this manifest and runs the full SQLite acceptance suite for every entry
+  on the default 3x-ui version. The panel-version matrix and PostgreSQL suite use
+  `default_version` to avoid a Cartesian product. Manifest edits trigger CI;
+  never declare a version supported without green acceptance jobs and Codecov.
+  The user-facing policy is in `docs/guides/version-compatibility.md`.
 - Version-aware skipping: `requireMinVersion(t, "vX.Y.Z")` for features added in a
   specific 3x-ui version; `requireBelowVersion(t, "vX.Y.Z")` for features removed
   upstream (e.g. `hysteria2`, dropped in v3.2.0). Currently supported: **v3.3.x**,

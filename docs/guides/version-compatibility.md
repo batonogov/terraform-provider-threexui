@@ -9,6 +9,14 @@ description: |-
 
 The 3x-ui panel evolves quickly, and some releases introduce breaking API changes that affect the provider. This guide documents which versions are supported, what changed between them, and how to pin the version you need.
 
+## Terraform CLI support
+
+The provider supports the two newest stable Terraform minor lines, using the latest patch release of each. The exact supported and tested releases are declared in [`terraform-versions.json`](https://github.com/batonogov/terraform-provider-threexui/blob/main/terraform-versions.json). Older minor lines and prereleases are outside this support policy.
+
+CI reads the manifest and runs the full acceptance suite for every listed release against the default 3x-ui panel version. The panel-version compatibility matrix and PostgreSQL suite use the manifest's `default_version`. When a new stable Terraform minor is released, replace the oldest line with the new one, update patch pins, and require green CI before merging the support change. Support is not extended automatically to an untested release through a floating `latest` selector.
+
+This policy covers Terraform CLI. It does not declare OpenTofu compatibility; OpenTofu is not part of this CI matrix.
+
 ## Support policy
 
 The provider officially supports every released patch across all supported 3x-ui minor lines — see the compatibility table in the README. The acceptance matrix exercises each version on each push to `main` and every pull request. Older lines (2.9.x, 3.0.x and earlier) were dropped from the test matrix in provider v3.4.0; 3.1.x was dropped when 3.7.x was added; 3.2.x was dropped when 3.8.x was added.
