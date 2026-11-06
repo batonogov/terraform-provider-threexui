@@ -74,7 +74,13 @@ jobs:
             (.versions == (.versions | sort_by(split(".") | map(tonumber)))) and
             (.versions[-1] == $default)
           ' terraform-versions.json
-          MATRIX=$(jq -c '.default_version as $default | {include: [.versions[] | {terraform: ., name: (if . == $default then "Acceptance Tests" else "Acceptance Tests (Terraform \(.))" end)}]}' terraform-versions.json)
+          MATRIX=$(jq -c '
+            .default_version as $default |
+            {include: [.versions[] | {
+              terraform: .,
+              name: (if . == $default then "Acceptance Tests" else "Acceptance Tests (Terraform \(.))" end)
+            }]}
+          ' terraform-versions.json)
           echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
           echo "default=$(jq -r .default_version terraform-versions.json)" >> "$GITHUB_OUTPUT"
 
