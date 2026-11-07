@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.32.1](https://github.com/batonogov/terraform-provider-threexui/compare/v3.32.0...v3.32.1) (2026-11-07)
+
+
+### Bug Fixes
+
+* **node:** plan volatile observed attributes as unknown on update ([#487](https://github.com/batonogov/terraform-provider-threexui/issues/487)) ([3d9c80a](https://github.com/batonogov/terraform-provider-threexui/commit/3d9c80abbbd39d8aea8d4656bc7405ef6f9a5aa1))
+
 ## [3.32.0](https://github.com/batonogov/terraform-provider-threexui/compare/v3.31.0...v3.32.0) (2026-11-06)
 
 
