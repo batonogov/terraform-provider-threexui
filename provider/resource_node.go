@@ -195,15 +195,26 @@ func (r *NodeResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	// The update handler returns only a status message (no object), so re-read
 	// to refresh observed state and detect drift.
 	got, getErr := r.client.GetNode(ctx, id)
+	// GetNode decodes a missing/null response object into a zero-value Node.
+	// It is not evidence of deletion and cannot resolve computed attributes.
+	if getErr == nil && (got == nil || got.Id == 0) {
+		getErr = fmt.Errorf("panel returned no node for id %d", id)
+	}
 	if getErr != nil {
 		if isAPIRecordNotFound(getErr) {
 			resp.State.RemoveResource(ctx)
 			return
 		}
-		resp.Diagnostics.AddWarning("Failed to re-read node after update", getErr.Error())
-	} else if got != nil {
-		flattenNodeToModel(got, &plan)
+		// The remote update succeeded, but the plan still contains unknown
+		// observed values. Retain the last known state (including identity) so
+		// the next refresh can reconcile it, rather than saving that plan.
+		resp.State = req.State
+		resp.Diagnostics.AddError("Failed to re-read node after update",
+			"The cluster node was updated, but its current state could not be read. "+
+				"The prior state has been retained; run Terraform again to refresh it.\n\n"+getErr.Error())
+		return
 	}
+	flattenNodeToModel(got, &plan)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
