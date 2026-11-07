@@ -667,7 +667,7 @@ func TestNodeResource_Update(t *testing.T) {
 	}
 }
 
-func TestNodeResource_Update_RemovesOnNotFound(t *testing.T) {
+func TestNodeResource_Update_ReportsNotFound(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/login":
@@ -694,8 +694,11 @@ func TestNodeResource_Update_RemovesOnNotFound(t *testing.T) {
 	})
 	resp := newNodeResourceUpdateResponse(t, r)
 	r.Update(context.Background(), resource.UpdateRequest{Plan: plan, Config: planToConfig(plan), State: tfsdk.State(plan)}, &resp)
-	if resp.Diagnostics.HasError() {
-		t.Fatalf("unexpected error on Update re-read not-found: %v", resp.Diagnostics)
+	if len(resp.Diagnostics) != 1 || resp.Diagnostics[0].Summary() != "Cluster node missing after update" {
+		t.Fatal("expected actionable update re-read not-found diagnostic")
+	}
+	if !resp.State.Raw.Equal(plan.Raw) {
+		t.Fatal("Update must preserve the prior identity until the next refresh")
 	}
 }
 

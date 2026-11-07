@@ -84,6 +84,10 @@ The central panel rewrites most of these on every heartbeat probe, and every upd
 
 `terraform destroy` unregisters the node from the panel (`POST /panel/api/nodes/del/:id`). 3x-ui **refuses** to delete a node that still owns inbounds (DB-002): if any inbound references this node, the delete fails with an error mentioning the attached inbounds. Detach or delete those inbounds first, then re-run `terraform destroy`. If the node was already removed out-of-band, delete succeeds (treated as already gone).
 
+## Recovery after an update error
+
+If an update succeeds on the panel but the follow-up read fails, the provider returns an explicit error and retains the node identity and previous observed values. Known secret changes accepted by the successful update, including write-only rotation versions, are retained so a later refresh does not require repeating the rotation. Run Terraform again to refresh and reconcile state. If the panel explicitly reports that the node disappeared, the next refresh removes it from state and plans recreation.
+
 ## Import
 
 Import is supported by numeric id:
@@ -92,4 +96,4 @@ Import is supported by numeric id:
 terraform import threexui_node.NAME <id>
 ```
 
-> **Scope note:** Write-only secret attributes (`api_token_wo` + `api_token_wo_version`, `pinned_cert_sha256_wo` + `pinned_cert_sha256_wo_version`) follow the AWS/Azure write-only pattern (Terraform 1.11+ / OpenTofu 1.11+). Set the `_wo` value and bump the `_wo_version` to rotate; the plain attribute keeps the masked value in state. The panel returns secrets raw (#314 R1), so this uses the settings-style strategy (ModifyPlan marks the plain attr Unknown on version change). On TF >= 1.11 using the plain `Sensitive` attr emits a `PreferWriteOnlyAttribute` warning.
+> **Scope note:** Set the write-only `_wo` value and bump its `_wo_version` to rotate (Terraform 1.11+ / OpenTofu 1.11+). The `_wo` attributes themselves are not stored in state, but this provider retains the resolved credentials in the corresponding plain `Sensitive` attributes to preserve them across panel reads and recover acknowledged updates. Sensitive values are hidden in normal CLI output, not encrypted or omitted from Terraform state; protect your state storage accordingly. Since 3x-ui v3.6.0 the panel does not echo `api_token` on read. ModifyPlan marks the plain attribute unknown on a version change so the new value can be recorded after apply. On Terraform >= 1.11, configuring the plain `Sensitive` attribute emits a `PreferWriteOnlyAttribute` warning.
