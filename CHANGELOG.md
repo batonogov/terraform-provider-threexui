@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.32.2](https://github.com/batonogov/terraform-provider-threexui/compare/v3.32.1...v3.32.2) (2026-11-07)
+
+
+### Bug Fixes
+
+* **node:** leave heartbeat-reported GUID unknown during updates ([#491](https://github.com/batonogov/terraform-provider-threexui/issues/491)) ([7fbc6ce](https://github.com/batonogov/terraform-provider-threexui/commit/7fbc6cedcc9dc9b7b1f4be7c86ce1780b4c4f76e))
+* **node:** preserve state when post-update reads fail ([#492](https://github.com/batonogov/terraform-provider-threexui/issues/492)) ([a8c8bd2](https://github.com/batonogov/terraform-provider-threexui/commit/a8c8bd2fa26b653ee7fe1b0f8e2c2a3b80c2ed30))
+
 ## [3.32.1](https://github.com/batonogov/terraform-provider-threexui/compare/v3.32.0...v3.32.1) (2026-11-07)
 
 
