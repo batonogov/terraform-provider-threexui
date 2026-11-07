@@ -22,6 +22,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
 
 // AmneziaWG (3x-ui v3.7.0+, #441).
@@ -709,22 +710,37 @@ func (v amneziawgServerRequiredValidator) MarkdownDescription(ctx context.Contex
 }
 
 func (v amneziawgServerRequiredValidator) ValidateResource(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
-	var config InboundResourceModel
-	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	// Read only what this check needs: the resource model holds list blocks as
+	// Go slices, and Terraform validates before variables and each.value are
+	// known, so a dynamic block over either arrives as an unknown list.
+	var protocol types.String
+	var settings types.Object
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("protocol"), &protocol)...)
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("amneziawg_settings"), &settings)...)
+	// Both are root attributes of this resource's schema; the reads cannot fail.
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
 	// An unknown protocol (interpolated from another resource) cannot be checked
 	// here; the panel still enforces its own rules at apply time.
-	if config.Protocol.IsNull() || config.Protocol.IsUnknown() {
+	if protocol.IsNull() || protocol.IsUnknown() {
 		return
 	}
-	if config.Protocol.ValueString() != "amneziawg" {
+	if protocol.ValueString() != "amneziawg" || settings.IsUnknown() {
 		return
 	}
-	if config.AmneziawgSettings != nil && config.AmneziawgSettings.Server != nil {
-		validateAmneziawgServerConstraints(config.AmneziawgSettings.Server, resp)
+	if server, ok := settings.Attributes()["server"].(types.Object); ok && !server.IsNull() {
+		if server.IsUnknown() {
+			return
+		}
+		var model InboundAmneziawgServerModel
+		resp.Diagnostics.Append(server.As(ctx, &model, basetypes.ObjectAsOptions{})...)
+		// Every server attribute maps to a types.* field, so a known object always converts.
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		validateAmneziawgServerConstraints(&model, resp)
 		return
 	}
 
