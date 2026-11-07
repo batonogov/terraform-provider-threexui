@@ -281,12 +281,12 @@ strategy (`api_token_wo`+`_wo_version`, `pinned_cert_sha256_wo`+`_wo_version`;
 (not the shared `modifyPlanWOVersion` generic — the node has two write-only secrets
 and the generic re-reads/overwrites `resp.Plan` on each call, which would erase the
 first `Unknown` mark on the second). Of the observed attributes, only `id`,
-`created_at`, `parent_guid` and `transitive` keep `UseStateForUnknown`: the heartbeat
-job rewrites the rest every 5 s (`3x-ui-3.11.0/internal/web/web.go:310`,
-`NodeService.UpdateHeartbeat`), and every update marks the node dirty
-(`UpdateFromRequest` → `MarkNodeDirtyTx` sets `config_dirty`/`config_dirty_at`, GORM
-bumps `updated_at`), so the re-read after an update never matches a planned prior
-value. `guid` is also unknown on updates: the first successful heartbeat learns it
+`created_at`, `parent_guid` and `transitive` keep `UseStateForUnknown`. Other
+observed fields can change independently of Terraform. On 3x-ui v3.11.0 the
+heartbeat runs every 5 s (`internal/web/web.go:310`, `NodeService.UpdateHeartbeat`)
+and updates mark the node dirty (`UpdateFromRequest` → `MarkNodeDirtyTx` sets
+`config_dirty`/`config_dirty_at`, GORM bumps `updated_at`); older versions differ.
+A post-update read therefore cannot promise prior observed values. `guid` is also unknown on updates: the first successful heartbeat learns it
 from empty, and a later heartbeat may replace a nonempty GUID (#489). Schema lives in `node_schema.go`;
 the typed `Node` model is shared with the `threexui_nodes` data source (`types.go`).
 

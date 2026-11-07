@@ -78,7 +78,7 @@ In addition to the arguments above, the following observed-state attributes are 
 - `parent_guid` (String) / `transitive` (Bool) - Node-tree attribution (read-only transitive sub-nodes have `transitive = true`).
 - `created_at` / `updated_at` (Number) - Unix millis.
 
-The central panel rewrites most of these on every heartbeat probe, and every update marks the node config dirty, so an in-place update plans them as `(known after apply)`. This includes `guid`, which can be learned or replaced between planning and the update re-read. Only `id`, `created_at`, `parent_guid` and `transitive` keep their values in the update plan. Without a configuration change, observed attributes remain known and do not cause an update.
+These values are observed from the central panel and can change independently of Terraform, so an in-place update plans them as `(known after apply)`. On 3x-ui v3.11.0, heartbeat probes refresh metrics and every update marks the node config dirty; older panel versions differ in which values they update. This includes `guid`, which can be learned or replaced between planning and the update re-read. Only `id`, `created_at`, `parent_guid` and `transitive` keep their values in the update plan. Without a configuration change, observed attributes remain known and do not cause an update.
 
 ## Delete behaviour
 

@@ -120,3 +120,12 @@ func (p *guidChangingNodePanel) ServeHTTP(w http.ResponseWriter, r *http.Request
 	w.WriteHeader(recorded.Code)
 	_, _ = w.Write(recorded.Body.Bytes())
 }
+
+func TestGUIDChangingNodePanelPreservesMissingNode(t *testing.T) {
+	panel := &guidChangingNodePanel{initialGUID: "not-yet-learned"}
+	response := httptest.NewRecorder()
+	panel.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/panel/api/nodes/get/1", nil))
+	if response.Code != http.StatusOK || response.Body.String() != string(failResponse("obtain (record not found)")) {
+		t.Fatal("GUID fake must preserve a missing-node API failure")
+	}
+}
