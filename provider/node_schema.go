@@ -219,17 +219,12 @@ func nodeResourceSchema() schema.Schema {
 			},
 
 			// --- Observed state (Computed) ---
-			// The heartbeat job and every update (MarkNodeDirtyTx) rewrite these, so
-			// only the identity attributes keep UseStateForUnknown. A prior value in
-			// the plan fails the update as an inconsistent result once the re-read
-			// returns a newer one; plans without changes still keep them known.
-			"guid": schema.StringAttribute{
-				Computed:    true,
-				Description: "Remote panel stable GUID.",
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
-			},
+			// The heartbeat job and every update (MarkNodeDirtyTx) rewrite these.
+			// GUID is learned on the first successful heartbeat and can be replaced
+			// upstream too. Copying prior observed values into an update plan fails
+			// as an inconsistent result when the re-read returns newer ones; plans
+			// without changes still keep them known.
+			"guid":           computedString("Remote panel GUID reported by heartbeat. Empty until learned; may change upstream."),
 			"status":         computedString("Node status: online, offline, or unknown."),
 			"last_heartbeat": computedInt64("Unix seconds of the last successful heartbeat probe (0 = never)."),
 			"latency_ms":     computedInt64("Last heartbeat latency in milliseconds."),
