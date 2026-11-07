@@ -7,7 +7,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/float64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
@@ -220,7 +219,17 @@ func nodeResourceSchema() schema.Schema {
 			},
 
 			// --- Observed state (Computed) ---
-			"guid":           computedString("Remote panel stable GUID."),
+			// The heartbeat job and every update (MarkNodeDirtyTx) rewrite these, so
+			// only the identity attributes keep UseStateForUnknown. A prior value in
+			// the plan fails the update as an inconsistent result once the re-read
+			// returns a newer one; plans without changes still keep them known.
+			"guid": schema.StringAttribute{
+				Computed:    true,
+				Description: "Remote panel stable GUID.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
 			"status":         computedString("Node status: online, offline, or unknown."),
 			"last_heartbeat": computedInt64("Unix seconds of the last successful heartbeat probe (0 = never)."),
 			"latency_ms":     computedInt64("Last heartbeat latency in milliseconds."),
@@ -228,15 +237,9 @@ func nodeResourceSchema() schema.Schema {
 			"panel_version":  computedString("3x-ui panel version reported by the node."),
 			"cpu_pct": schema.Float64Attribute{
 				Computed: true,
-				PlanModifiers: []planmodifier.Float64{
-					float64planmodifier.UseStateForUnknown(),
-				},
 			},
 			"mem_pct": schema.Float64Attribute{
 				Computed: true,
-				PlanModifiers: []planmodifier.Float64{
-					float64planmodifier.UseStateForUnknown(),
-				},
 			},
 			"uptime_secs": computedInt64("Node uptime in seconds."),
 			"unavailable_metrics": schema.ListAttribute{
@@ -257,24 +260,38 @@ func nodeResourceSchema() schema.Schema {
 			"active_count":    computedInt64("Number of active clients on the node."),
 			"disabled_count":  computedInt64("Number of disabled clients on the node."),
 			"depleted_count":  computedInt64("Number of depleted clients on the node."),
-			"parent_guid":     computedString("Parent node GUID when surfaced as part of a node tree."),
-			"transitive":      computedBool("True for read-only transitive sub-nodes surfaced from a downstream panel."),
-			"created_at":      computedInt64("Node creation time (unix millis)."),
-			"updated_at":      computedInt64("Node last update time (unix millis)."),
+			"parent_guid": schema.StringAttribute{
+				Computed:    true,
+				Description: "Parent node GUID when surfaced as part of a node tree.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"transitive": schema.BoolAttribute{
+				Computed:    true,
+				Description: "True for read-only transitive sub-nodes surfaced from a downstream panel.",
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"created_at": schema.Int64Attribute{
+				Computed:    true,
+				Description: "Node creation time (unix millis).",
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
+			},
+			"updated_at": computedInt64("Node last update time (unix millis)."),
 		},
 	}
 }
 
 // computedString / computedInt64 / computedBool are small helpers that keep the
-// observed-state block above compact. They carry UseStateForUnknown so a
-// refresh after import/apply does not produce false drift.
+// observed-state block above compact. They add no plan modifiers on purpose.
 func computedString(desc string) schema.StringAttribute {
 	return schema.StringAttribute{
 		Computed:    true,
 		Description: desc,
-		PlanModifiers: []planmodifier.String{
-			stringplanmodifier.UseStateForUnknown(),
-		},
 	}
 }
 
@@ -282,9 +299,6 @@ func computedInt64(desc string) schema.Int64Attribute {
 	return schema.Int64Attribute{
 		Computed:    true,
 		Description: desc,
-		PlanModifiers: []planmodifier.Int64{
-			int64planmodifier.UseStateForUnknown(),
-		},
 	}
 }
 
@@ -292,8 +306,5 @@ func computedBool(desc string) schema.BoolAttribute {
 	return schema.BoolAttribute{
 		Computed:    true,
 		Description: desc,
-		PlanModifiers: []planmodifier.Bool{
-			boolplanmodifier.UseStateForUnknown(),
-		},
 	}
 }
