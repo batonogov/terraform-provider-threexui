@@ -274,6 +274,41 @@ resource "threexui_inbound" "hysteria" {
 }
 ```
 
+### Hysteria with Salamander obfuscation and a decoy site
+
+```hcl
+resource "threexui_inbound" "hysteria_obfs" {
+  port     = 443
+  protocol = "hysteria"
+  enable   = true
+  remark   = "Hysteria obfs"
+
+  hysteria_settings {
+    version = 2
+  }
+
+  stream_settings {
+    network  = "hysteria"
+    security = "tls"
+
+    # Share links get obfs=salamander and obfs-password from the panel.
+    final_mask = jsonencode({
+      udp = [{ type = "salamander", settings = { password = var.hysteria_obfs_password } }]
+    })
+
+    hysteria_settings {
+      version = 2
+
+      # Requests without valid auth get this static site instead of a 404.
+      masquerade {
+        type = "file"
+        dir  = "/var/www/decoy"
+      }
+    }
+  }
+}
+```
+
 ### MTProto
 
 ```hcl
@@ -565,6 +600,7 @@ Unlike AmneziaWG, the panel generates nothing here: the `certificate` / `private
 
 - `network` (Optional, String) - Transport network (`tcp`, `ws`, `grpc`, `httpupgrade`, `xhttp`, `kcp`, `hysteria`).
 - `security` (Optional, String) - Security type (`none`, `tls`, `reality`).
+- `final_mask` (Optional, String, Sensitive) - xray `finalmask` as a JSON object. See [`final_mask`](#final_mask) below.
 - `tcp_settings` (Optional, Block) - TCP transport settings.
   - `accept_proxy_protocol` (Optional, Boolean)
   - `header_type` (Optional, String)
@@ -606,6 +642,7 @@ Unlike AmneziaWG, the panel generates nothing here: the `certificate` / `private
   - `version` (Optional, Number) - Hysteria version (default 2).
   - `auth` (Optional, String) - Hysteria auth string.
   - `udp_idle_timeout` (Optional, Number) - UDP idle timeout in seconds (default 60).
+  - `masquerade` (Optional, Block) - What the server answers a request without valid auth (xray `masquerade`). See [`masquerade`](#masquerade-optional-block) below.
 - `reality_settings` (Optional, Block) - Reality settings.
   - `show` (Optional, Boolean)
   - `xver` (Optional, Number)
@@ -659,6 +696,67 @@ Unlike AmneziaWG, the panel generates nothing here: the `certificate` / `private
   - `remark` (Optional, String)
   - `force_tls` (Optional, String)
 - `sockopt` (Optional, Block) - Socket options (xray `sockopt`). See [`sockopt`](#sockopt-optional-block) below.
+
+#### `final_mask`
+
+xray's `streamSettings.finalmask`: masks applied to the bytes the transport
+sends and receives — `tcp` and `udp` lists of `{ type, settings }` entries
+(`salamander`, `noise`, `xdns`, `fragment`, `sudoku`, …) and `quicParams`. The
+value is a JSON object rather than a typed block because every xray-core
+release adds mask types. The block is shared with `threexui_xray_outbounds`,
+where the masks apply to the panel's own Xray when it dials the outbound.
+
+Write it with `jsonencode()`. The provider compares the value as JSON, so
+whitespace and key order do not cause a diff, and it reads the panel's value
+back in the `jsonencode()` spelling, so an imported inbound plans no change.
+The attribute is `Sensitive` because masks carry passwords, and it is not
+`Computed`: removing it removes `finalmask` from the inbound. Like other
+`stream_settings` fields, a finalmask added in the panel to an inbound whose
+configuration has no `final_mask` is not shown by `plan` and is removed by the
+next update; declare it to manage it.
+
+On a Hysteria inbound a `salamander` UDP mask is what the panel turns into the
+`obfs=salamander&obfs-password=…` part of share links (on 3x-ui v3.8.0+ a
+`packetSize` setting becomes the `gecko` variant). The JSON subscription passes
+the finalmask on to clients; 3x-ui v3.11.0 appends the masks of the
+subscription-wide `sub_json_final_mask` and of a host group's `final_mask` to
+it and leaves out the server-only `filter` masks. Its password must be at least 4 bytes: xray-core loads a shorter one
+and then refuses to open the socket, which takes the listener down. 3x-ui
+v3.10.0+ rejects such a password on save; the provider rejects it at plan time
+on every supported version.
+
+The panel also checks or rewrites masks on save, and the provider does not
+repeat those checks: 3x-ui v3.5.0+ rejects `tcp` masks together with
+`security = "reality"`, and 3x-ui v3.9.0+ stores an xdns mask written in an
+older shape in the one its xray-core reads (v3.11.0: `names`/`addrs` lists).
+Write xdns masks in the current shape, or the apply fails with an inconsistent
+result.
+
+#### `masquerade` (Optional, Block)
+
+`streamSettings.hysteriaSettings.masquerade`: what a Hysteria inbound answers an
+HTTP/3 request that does not authenticate, such as a browser or an active
+probe. Without the block, or without `type`, xray-core answers
+`404 page not found`. The panel copies the block into the JSON subscription
+unchanged; xray-core ignores it on the client side, so it has no effect on an
+outbound.
+
+- `type` (Optional, String) - `file` serves the files in `dir`, `proxy` reverse-proxies to `url`, `string` answers with `content`.
+- `dir` (Optional, String) - `file`: a directory on the host that runs the inbound's Xray (the panel, or the node for a node inbound). Required with `type = "file"`, since xray-core would otherwise serve its own working directory.
+- `url` (Optional, String) - `proxy`: an `http://` or `https://` URL with a host, or the path of a unix socket (also `unix:///path`). Required with `type = "proxy"`; xray-core refuses to start the listener for any other scheme, so the provider rejects it at plan time.
+- `rewrite_host` (Optional, Boolean) - `proxy`: send the upstream's host as `Host` instead of the client's.
+- `x_forwarded` (Optional, Boolean) - `proxy`: add `X-Forwarded-*` headers. Needs xray-core v26.9.9+ (3x-ui v3.8.0+); older cores ignore it.
+- `insecure` (Optional, Boolean) - `proxy`: do not verify the certificate of an `https://` upstream.
+- `content` (Optional, String) - `string`: response body.
+- `headers` (Optional, Map of String) - `string`: response headers.
+- `status_code` (Optional, Number) - `string`: response status, 100-999; unset answers 200.
+
+xray-core reads only the attributes of the selected `type`. The attributes are
+not `Computed`: removing one removes its key, and removing the block removes
+`masquerade`. xray-core reads `""`, `false`, `0` and `{}` as unset, so the
+provider rejects them (omit the attribute instead), and the empty values the
+3x-ui form writes for the keys a type does not use, when the inbound is saved
+there, read back as unset. An empty `masquerade {}` block is written as `{}`.
 
 #### `xmux` (Optional, Block)
 

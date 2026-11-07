@@ -88,6 +88,7 @@ server. An omitted block is persisted from state on unrelated updates, and is
 
 - `network` (String, Optional) - Transport network (`tcp`, `ws`, `grpc`, `httpupgrade`, `xhttp`, `kcp`, `hysteria`).
 - `security` (String, Optional) - Security type (`none`, `tls`, `reality`).
+- `final_mask` (String, Optional, Sensitive) - xray `finalmask` (masks such as `salamander` or `fragment`) as a JSON object, applied by the panel's own Xray when it dials this outbound. Write it with `jsonencode()`; value, comparison and validation as on [`threexui_inbound`](inbound.md#final_mask). Not refilled from state: removing it removes `finalmask` from the outbound (an omitted `stream_settings` block is kept whole, `final_mask` included).
 - `tcp_settings` (Block, Optional, Max: 1) - TCP transport settings.
   - `accept_proxy_protocol` (Bool, Optional)
   - `header_type` (String, Optional)
@@ -135,6 +136,7 @@ server. An omitted block is persisted from state on unrelated updates, and is
   - `version` (Int, Optional)
   - `auth` (String, Optional)
   - `udp_idle_timeout` (Int, Optional)
+  - `masquerade` (Block, Optional, Max: 1) - Server-side setting shared with [`threexui_inbound`](inbound.md#masquerade-optional-block); xray-core ignores it on an outbound.
 - `reality_settings` (Block, Optional, Max: 1) - Reality settings.
   - `show` (Bool, Optional)
   - `xver` (Int, Optional)

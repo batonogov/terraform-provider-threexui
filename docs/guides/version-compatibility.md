@@ -59,7 +59,7 @@ The compatibility matrix tests the provider's existing resources on v3.10.0 and 
 Before upgrading a managed panel:
 
 - Xray-core v26.10.10 uses bundled Mozilla roots for outbound TLS. Configure `stream_settings.tls_settings.use_system_ca = true` for upstream servers signed by a private CA installed on the panel host.
-- The panel migrates xdns finalmasks to `names`/`addrs` and client-side UDP hopping to the `udphop` mask. Review any raw JSON in subscription settings after the upgrade; update Terraform configuration to the migrated shape before applying it again. Typed stream settings do not expose finalmask.
+- The panel migrates xdns finalmasks to `names`/`addrs` and client-side UDP hopping to the `udphop` mask. Review any raw JSON in subscription settings and in `stream_settings.final_mask` after the upgrade; update Terraform configuration to the migrated shape before applying it again.
 - Shadowsocks `2022-blake3-chacha20-poly1305` inbounds migrate to `2022-blake3-aes-256-gcm`. The panel also replaces invalid Shadowsocks-2022 server keys. Refresh state and update the configured method/key to match before the next apply.
 - Upgrade cluster nodes as well as the master to receive the node-side synchronization and live client-update fixes.
 
@@ -158,7 +158,8 @@ Current version gates:
 - **v3.5.0+**: host groups, MTProto per-client FakeTLS fields, Xray environment variables, outbound target strategy, and expanded balancer settings.
 - **v3.6.0+**: inbound `traffic_reset_day`, SMTP `From` header, subscription format auto-detection, and node `api_token_wo`.
 - **v3.7.0+**: inbound `disable_flow`, per-client calendar renewals (`reset_day`, `reset_max`) and traffic reset cycle (`traffic_reset`, `traffic_reset_day`), panel `ip_limit_allowlist`, subscription `sub_json_observatory`, and the `threexui_sub_balancer` resource (JSON-subscription balancers; older panels fail with an error naming the version).
-- **v3.8.0+**: `threexui_sub_balancer` `member_weights` (v3.7.x discards them, so the provider fails the apply instead of storing a balancer without them).
+- **v3.8.0+**: `threexui_sub_balancer` `member_weights` (v3.7.x discards them, so the provider fails the apply instead of storing a balancer without them); Hysteria `masquerade.x_forwarded` takes effect (older xray-core ignores it), and a salamander `final_mask` with `packetSize` is exported as the `gecko` share-link variant.
+- **v3.10.0+**: the panel rejects a salamander `final_mask` password shorter than 4 bytes on save; the provider checks it at plan time on every version.
 - **v3.11.0+**: `node_down_threshold`, `sub_host_sort_mode`, `sub_clash_remote_dns`, host-group SNI pools/CIDR counts, client host bindings, AmneziaWG kernel mode and keepalive ranges, and node `unavailable_metrics`.
 
 Tests without `requireMinVersion` run on all supported versions (v3.3.0+).

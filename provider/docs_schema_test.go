@@ -40,6 +40,8 @@ func TestDocumentedSchemaSections(t *testing.T) {
 	assertDocumentedBlock(t, "docs/resources/inbound.md", "#### `sockopt`", stream.Blocks["sockopt"])
 	xhttp := requireSingleNestedBlock(t, stream.Blocks["xhttp_settings"])
 	assertDocumentedBlock(t, "docs/resources/inbound.md", "#### `xmux`", xhttp.Blocks["xmux"])
+	hysteria := requireSingleNestedBlock(t, stream.Blocks["hysteria_settings"])
+	assertDocumentedBlock(t, "docs/resources/inbound.md", "#### `masquerade`", hysteria.Blocks["masquerade"])
 
 	assertDocumentedBlock(t, "docs/resources/inbound.md", "#### `tuic_settings`", inbound["tuic_settings"])
 	// The nested `server`/`clients` headings deliberately reuse the

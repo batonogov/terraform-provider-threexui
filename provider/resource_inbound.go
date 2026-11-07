@@ -1617,6 +1617,8 @@ func alignBlocksWithPlan(state *InboundResourceModel, plan *InboundResourceModel
 		}
 		if plan.StreamSettings.HysteriaSettings == nil {
 			state.StreamSettings.HysteriaSettings = nil
+		} else if state.StreamSettings.HysteriaSettings != nil && plan.StreamSettings.HysteriaSettings.Masquerade == nil {
+			state.StreamSettings.HysteriaSettings.Masquerade = nil
 		}
 		if plan.StreamSettings.Sockopt == nil {
 			state.StreamSettings.Sockopt = nil

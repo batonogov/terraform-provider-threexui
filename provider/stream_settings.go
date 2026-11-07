@@ -79,6 +79,11 @@ func buildStreamSettingsJSON(item map[string]any) string {
 			payload["sockopt"] = expandSockopt(list)
 		}
 	}
+	// An invalid document would fail the whole json.Marshal below and wipe the
+	// stream settings; finalMaskValidator rejects it before it gets here.
+	if v, ok := item["final_mask"].(string); ok && json.Valid([]byte(v)) {
+		payload["finalmask"] = json.RawMessage(v)
+	}
 
 	if len(payload) == 0 {
 		return "{}"
@@ -159,10 +164,28 @@ func flattenStreamSettings(stream string) ([]any, error) {
 			out["sockopt"] = []any{so}
 		}
 	}
+	if fm, ok := flattenFinalMask(stream); ok {
+		out["final_mask"] = fm
+	}
 	if len(out) == 0 {
 		return []any{}, nil
 	}
 	return []any{out}, nil
+}
+
+// flattenFinalMask decodes finalmask apart from the rest of the payload,
+// which goes through float64 and would round large integers.
+func flattenFinalMask(stream string) (string, bool) {
+	var raw struct {
+		FinalMask json.RawMessage `json:"finalmask"`
+	}
+	if json.Unmarshal([]byte(stream), &raw) != nil || len(raw.FinalMask) == 0 || string(raw.FinalMask) == "null" {
+		return "", false
+	}
+	// RawMessage only holds a value json.Unmarshal has already parsed, so
+	// canonicalJSON cannot fail here.
+	fm, err := canonicalJSON(raw.FinalMask)
+	return fm, err == nil
 }
 
 func expandExternalProxy(list []any) []any {
@@ -991,6 +1014,67 @@ func expandHysteriaStreamSettings(list []any) map[string]any {
 			out["udpIdleTimeout"] = n
 		}
 	}
+	if v, ok := item["masquerade"].([]any); ok && len(v) > 0 {
+		out["masquerade"] = expandHysteriaMasquerade(v)
+	}
+	return out
+}
+
+// expandHysteriaMasquerade always returns an object: an empty block is
+// written as {}, which xray-core reads as the default 404.
+func expandHysteriaMasquerade(list []any) map[string]any {
+	out := map[string]any{}
+	item, _ := list[0].(map[string]any)
+	for snake, wire := range masqueradeStringWireKeys {
+		if v, ok := item[snake].(string); ok {
+			out[wire] = v
+		}
+	}
+	for snake, wire := range masqueradeBoolWireKeys {
+		if v, ok := item[snake].(bool); ok {
+			out[wire] = v
+		}
+	}
+	if v, ok := item["headers"].(map[string]any); ok {
+		out["headers"] = v
+	}
+	// int32 on the xray-core side, so it must stay a JSON number.
+	if v, ok := item["status_code"]; ok {
+		out["statusCode"] = int64Value(v)
+	}
+	return out
+}
+
+// flattenHysteriaMasquerade reads zero values as unset, as xray-core does:
+// the 3x-ui form writes "", false, 0 and {} for the keys a type does not use.
+func flattenHysteriaMasquerade(in map[string]any) map[string]any {
+	out := map[string]any{}
+	for snake, wire := range masqueradeStringWireKeys {
+		if v, ok := in[wire].(string); ok && v != "" {
+			out[snake] = v
+		}
+	}
+	for snake, wire := range masqueradeBoolWireKeys {
+		if v, ok := in[wire].(bool); ok && v {
+			out[snake] = true
+		}
+	}
+	if v, ok := in["headers"].(map[string]any); ok {
+		headers := map[string]any{}
+		for k, h := range v {
+			if s, ok := h.(string); ok {
+				headers[k] = s
+			}
+		}
+		if len(headers) > 0 {
+			out["headers"] = headers
+		}
+	}
+	// A fractional value fails the xray-core int32 decode, so it reads as
+	// unset and the next write replaces it.
+	if v, ok := in["statusCode"].(float64); ok && v != 0 && v == math.Trunc(v) {
+		out["status_code"] = int64(v)
+	}
 	return out
 }
 
@@ -1007,6 +1091,9 @@ func flattenHysteriaStreamSettings(in map[string]any) map[string]any {
 	}
 	if v, ok := in["udpIdleTimeout"]; ok {
 		out["udp_idle_timeout"] = intValue(v)
+	}
+	if v, ok := in["masquerade"].(map[string]any); ok {
+		out["masquerade"] = []any{flattenHysteriaMasquerade(v)}
 	}
 	return out
 }
