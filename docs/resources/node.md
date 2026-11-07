@@ -78,6 +78,8 @@ In addition to the arguments above, the following observed-state attributes are 
 - `parent_guid` (String) / `transitive` (Bool) - Node-tree attribution (read-only transitive sub-nodes have `transitive = true`).
 - `created_at` / `updated_at` (Number) - Unix millis.
 
+The central panel rewrites most of these on every heartbeat probe, and every update marks the node config dirty, so an in-place update plans them as `(known after apply)`. Only `id`, `guid`, `created_at`, `parent_guid` and `transitive` keep their values in the plan.
+
 ## Delete behaviour
 
 `terraform destroy` unregisters the node from the panel (`POST /panel/api/nodes/del/:id`). 3x-ui **refuses** to delete a node that still owns inbounds (DB-002): if any inbound references this node, the delete fails with an error mentioning the attached inbounds. Detach or delete those inbounds first, then re-run `terraform destroy`. If the node was already removed out-of-band, delete succeeds (treated as already gone).

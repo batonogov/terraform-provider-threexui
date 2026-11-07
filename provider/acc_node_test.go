@@ -1,10 +1,18 @@
 package provider
 
 import (
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
+	"sync"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
+	"github.com/hashicorp/terraform-plugin-testing/plancheck"
+	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
 )
 
 // testAccNodeConfig returns a threexui_node resource configuration for the
@@ -132,4 +140,160 @@ func TestAccNodeResource_NotFoundRemovesFromState(t *testing.T) {
 			},
 		},
 	})
+}
+
+// TestAccNodeResource_UpdateWithLiveHeartbeat guards the update path against
+// observed attributes planned from prior state: the re-read after the update
+// returns newer values, and Terraform fails the apply with "Provider produced
+// inconsistent result after apply". It runs against an in-process fake of the
+// node API because CI has no node the central panel can reach.
+func TestAccNodeResource_UpdateWithLiveHeartbeat(t *testing.T) {
+	panel := httptest.NewServer(&fakeNodePanel{now: 1_700_000_000})
+	defer panel.Close()
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: testAccNodeFakePanelConfig(panel.URL, "first"),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("threexui_node.test", "remark", "first"),
+					resource.TestCheckResourceAttr("threexui_node.test", "status", "online"),
+					resource.TestCheckResourceAttr("threexui_node.test", "config_dirty", "false"),
+				),
+			},
+			{
+				Config: testAccNodeFakePanelConfig(panel.URL, "second"),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction("threexui_node.test", plancheck.ResourceActionUpdate),
+						// References to the node must stay known through an update.
+						plancheck.ExpectKnownValue("threexui_node.test", tfjsonpath.New("id"), knownvalue.StringExact("1")),
+						plancheck.ExpectKnownValue("threexui_node.test", tfjsonpath.New("guid"), knownvalue.StringExact(fakeNodeGUID)),
+					},
+				},
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("threexui_node.test", "remark", "second"),
+					resource.TestCheckResourceAttr("threexui_node.test", "config_dirty", "true"),
+				),
+			},
+		},
+	})
+}
+
+func testAccNodeFakePanelConfig(endpoint, remark string) string {
+	return fmt.Sprintf(`
+terraform {
+  required_providers {
+    threexui = {
+      source = "%s/%s/threexui"
+    }
+  }
+}
+
+provider "threexui" {
+  endpoint  = %q
+  base_path = "/"
+  username  = "admin"
+  password  = "admin"
+}
+
+resource "threexui_node" "test" {
+  name         = "acc-node-heartbeat"
+  remark       = %q
+  scheme       = "http"
+  address      = "node.example.com"
+  port         = 2053
+  api_token    = "acc-node-token"
+  outbound_tag = ""
+}
+`, getenvDefault("TF_ACC_PROVIDER_HOST", "registry.terraform.io"),
+		getenvDefault("TF_ACC_PROVIDER_NAMESPACE", "hashicorp"), endpoint, remark)
+}
+
+const fakeNodeGUID = "acc-node-guid"
+
+// fakeNodePanel mimics the 3x-ui v3.11.0 node API: the heartbeat job rewrites
+// the row every 5s, and NodeService.UpdateFromRequest marks it dirty
+// (MarkNodeDirtyTx), so no two reads return the same observed state.
+type fakeNodePanel struct {
+	mu   sync.Mutex
+	now  int64
+	node *Node
+}
+
+func (p *fakeNodePanel) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	switch r.URL.Path {
+	case "/login":
+		http.SetCookie(w, &http.Cookie{Name: "3x-ui", Value: "sess"})
+		w.Write(okResponse(nil))
+	case "/panel/api/nodes/add":
+		p.node = &Node{Id: 1, Status: "unknown", CreatedAt: p.now * 1000, UpdatedAt: p.now * 1000}
+		applyFakeNodeForm(p.node, r)
+		w.Write(okResponse(p.node))
+	case "/panel/api/nodes/get/1":
+		if p.node == nil {
+			w.Write(failResponse("obtain (record not found)"))
+			return
+		}
+		p.heartbeat()
+		w.Write(okResponse(p.node))
+	case "/panel/api/nodes/update/1":
+		applyFakeNodeForm(p.node, r)
+		p.node.ConfigDirty = true
+		p.node.ConfigDirtyAt = p.now * 1000
+		p.node.UpdatedAt = p.node.ConfigDirtyAt
+		w.Write(okResponse(nil))
+	case "/panel/api/nodes/del/1":
+		p.node = nil
+		w.Write(okResponse(nil))
+	default:
+		w.WriteHeader(http.StatusNotFound)
+	}
+}
+
+// heartbeat stands for one NodeHeartbeatJob tick between two reads; the GUID
+// and versions are learned on the first one (NodeService.UpdateHeartbeat).
+func (p *fakeNodePanel) heartbeat() {
+	p.now += 5
+	n := p.node
+	n.Guid = fakeNodeGUID
+	n.Status = "online"
+	n.XrayVersion = "26.10.21"
+	n.PanelVersion = "3.11.0"
+	n.XrayState = "running"
+	n.LastHeartbeat = p.now
+	n.LatencyMs = int(p.now % 40)
+	n.CpuPct = float64(p.now%1000) / 10
+	n.MemPct = float64(p.now%700) / 10
+	n.UptimeSecs += 5
+	n.NetUp += 4096
+	n.NetDown += 8192
+	n.UpdatedAt = p.now * 1000
+}
+
+// applyFakeNodeForm stores the managed fields the provider posts, dropping the
+// inbound tags unless the sync mode is "selected" as NodeService.normalize
+// does. The apiToken is never echoed back: it is write-only since v3.6.0.
+func applyFakeNodeForm(n *Node, r *http.Request) {
+	_ = r.ParseForm()
+	n.Name = r.FormValue("name")
+	n.Remark = r.FormValue("remark")
+	n.Scheme = r.FormValue("scheme")
+	n.Address = r.FormValue("address")
+	n.Port, _ = strconv.Atoi(r.FormValue("port"))
+	n.BasePath = r.FormValue("basePath")
+	n.Enable = r.FormValue("enable") == "true"
+	n.AllowPrivateAddress = r.FormValue("allowPrivateAddress") == "true"
+	n.TlsVerifyMode = r.FormValue("tlsVerifyMode")
+	n.PinnedCertSha256 = r.FormValue("pinnedCertSha256")
+	n.InboundSyncMode = r.FormValue("inboundSyncMode")
+	n.OutboundTag = r.FormValue("outboundTag")
+	n.InboundTags = nil
+	if n.InboundSyncMode == "selected" {
+		_ = json.Unmarshal([]byte(r.FormValue("inboundTags")), &n.InboundTags)
+	}
 }
