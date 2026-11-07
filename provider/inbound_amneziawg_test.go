@@ -15,6 +15,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 )
 
 // awgFullServerModel is a server block with every attribute populated, so the
@@ -401,9 +402,104 @@ func TestAmneziawgServerRequiredValidator(t *testing.T) {
 	}
 }
 
+// Terraform validates a for_each resource before each.value is known, so a
+// dynamic block over it arrives as an unknown list or object. The validator
+// must not fail to decode such a config, and must still check what is known.
+func TestAmneziawgServerRequiredValidatorUnknownBlocks(t *testing.T) {
+	externalProxy := tftypes.NewAttributePath().WithAttributeName("stream_settings").WithAttributeName("external_proxy")
+	awgClients := tftypes.NewAttributePath().WithAttributeName("amneziawg_settings").WithAttributeName("clients")
+	awgServer := tftypes.NewAttributePath().WithAttributeName("amneziawg_settings").WithAttributeName("server")
+	awgSettings := tftypes.NewAttributePath().WithAttributeName("amneziawg_settings")
+
+	cases := []struct {
+		name      string
+		model     InboundResourceModel
+		unknown   *tftypes.AttributePath
+		wantError bool
+	}{
+		{
+			name: "unknown external_proxy list on a vless inbound",
+			model: InboundResourceModel{
+				Protocol:       types.StringValue("vless"),
+				StreamSettings: &InboundStreamSettingsModel{},
+			},
+			unknown: externalProxy,
+		},
+		{
+			name: "unknown external_proxy list does not hide a missing server block",
+			model: InboundResourceModel{
+				Protocol:       types.StringValue("amneziawg"),
+				StreamSettings: &InboundStreamSettingsModel{},
+			},
+			unknown:   externalProxy,
+			wantError: true,
+		},
+		{
+			name: "unknown clients list next to a declared server block",
+			model: InboundResourceModel{
+				Protocol: types.StringValue("amneziawg"),
+				AmneziawgSettings: &InboundAmneziawgSettingsModel{
+					Server: &InboundAmneziawgServerModel{},
+				},
+			},
+			unknown: awgClients,
+		},
+		{
+			name: "server constraints are still checked next to an unknown clients list",
+			model: InboundResourceModel{
+				Protocol: types.StringValue("amneziawg"),
+				AmneziawgSettings: &InboundAmneziawgSettingsModel{
+					Server: &InboundAmneziawgServerModel{Jmin: types.Int64Value(100), Jmax: types.Int64Value(10)},
+				},
+			},
+			unknown:   awgClients,
+			wantError: true,
+		},
+		{
+			name: "an unknown server block cannot be checked here",
+			model: InboundResourceModel{
+				Protocol: types.StringValue("amneziawg"),
+				AmneziawgSettings: &InboundAmneziawgSettingsModel{
+					Server: &InboundAmneziawgServerModel{},
+				},
+			},
+			unknown: awgServer,
+		},
+		{
+			name: "an unknown settings block cannot be checked here",
+			model: InboundResourceModel{
+				Protocol:          types.StringValue("amneziawg"),
+				AmneziawgSettings: &InboundAmneziawgSettingsModel{},
+			},
+			unknown: awgSettings,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			diags := amneziawgConfigDiags(t, tc.model, tc.unknown)
+			for _, d := range diags.Errors() {
+				if d.Summary() == "Value Conversion Error" {
+					t.Fatalf("validator could not decode the config: %s", d.Detail())
+				}
+			}
+			if got := diags.HasError(); got != tc.wantError {
+				t.Errorf("validator error = %v, want %v (%v)", got, tc.wantError, diags)
+			}
+		})
+	}
+}
+
 // amneziawgConfigRejected runs the validator against a config built from model
 // and reports whether it produced an error diagnostic.
 func amneziawgConfigRejected(t *testing.T, model InboundResourceModel) bool {
+	t.Helper()
+	return amneziawgConfigDiags(t, model, nil).HasError()
+}
+
+// amneziawgConfigDiags runs the validator against a config built from model,
+// with the value at unknown (if any) replaced by an unknown of the same type.
+func amneziawgConfigDiags(t *testing.T, model InboundResourceModel, unknown *tftypes.AttributePath) diag.Diagnostics {
 	t.Helper()
 
 	var schemaResp resource.SchemaResponse
@@ -421,13 +517,24 @@ func amneziawgConfigRejected(t *testing.T, model InboundResourceModel) bool {
 	if err != nil {
 		t.Fatalf("converting config object: %v", err)
 	}
+	if unknown != nil {
+		raw, err = tftypes.Transform(raw, func(p *tftypes.AttributePath, v tftypes.Value) (tftypes.Value, error) {
+			if p.Equal(unknown) {
+				return tftypes.NewValue(v.Type(), tftypes.UnknownValue), nil
+			}
+			return v, nil
+		})
+		if err != nil {
+			t.Fatalf("marking %s unknown: %v", unknown, err)
+		}
+	}
 
 	req := resource.ValidateConfigRequest{
 		Config: tfsdk.Config{Raw: raw, Schema: schemaResp.Schema},
 	}
 	resp := &resource.ValidateConfigResponse{}
 	amneziawgServerRequiredValidator{}.ValidateResource(ctx, req, resp)
-	return resp.Diagnostics.HasError()
+	return resp.Diagnostics
 }
 
 // The validator has to be wired into the resource, or it never runs.
