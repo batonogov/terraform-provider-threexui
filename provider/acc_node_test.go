@@ -167,9 +167,9 @@ func TestAccNodeResource_UpdateWithLiveHeartbeat(t *testing.T) {
 				ConfigPlanChecks: resource.ConfigPlanChecks{
 					PreApply: []plancheck.PlanCheck{
 						plancheck.ExpectResourceAction("threexui_node.test", plancheck.ResourceActionUpdate),
-						// References to the node must stay known through an update.
+						// The stable node id stays known; its observed GUID may change.
 						plancheck.ExpectKnownValue("threexui_node.test", tfjsonpath.New("id"), knownvalue.StringExact("1")),
-						plancheck.ExpectKnownValue("threexui_node.test", tfjsonpath.New("guid"), knownvalue.StringExact(fakeNodeGUID)),
+						plancheck.ExpectUnknownValue("threexui_node.test", tfjsonpath.New("guid")),
 					},
 				},
 				Check: resource.ComposeTestCheckFunc(
