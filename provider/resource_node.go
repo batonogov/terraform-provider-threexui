@@ -195,15 +195,39 @@ func (r *NodeResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	// The update handler returns only a status message (no object), so re-read
 	// to refresh observed state and detect drift.
 	got, getErr := r.client.GetNode(ctx, id)
+	// GetNode decodes a missing/null response object into a zero-value Node.
+	// It is not evidence of deletion and cannot resolve computed attributes.
+	if getErr == nil && (got == nil || got.Id == 0) {
+		getErr = fmt.Errorf("panel returned no node for id %d", id)
+	}
 	if getErr != nil {
+		// Preserve observed state and identity, not the unknown planned values.
+		// A successful POST does acknowledge known secrets, however: refresh
+		// cannot recover the non-echoed token or local WO version triggers.
+		state.ApiToken, state.ApiTokenWOVersion = acknowledgedNodeSecret(
+			state.ApiToken, plan.ApiToken, config.ApiTokenWO, state.ApiTokenWOVersion, plan.ApiTokenWOVersion, true)
+		state.PinnedCertSha256, state.PinnedCertSha256WOVersion = acknowledgedNodeSecret(
+			state.PinnedCertSha256, plan.PinnedCertSha256, config.PinnedCertSha256WO,
+			state.PinnedCertSha256WOVersion, plan.PinnedCertSha256WOVersion, false)
+		// Write-only attributes themselves must never be saved in state.
+		state.ApiTokenWO = types.StringNull()
+		state.PinnedCertSha256WO = types.StringNull()
+		resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 		if isAPIRecordNotFound(getErr) {
-			resp.State.RemoveResource(ctx)
+			// Update cannot return null state without a framework bug diagnostic.
+			// Keep the existing identity on this failed apply; Read removes it on
+			// the next refresh, allowing Terraform to plan recreation.
+			resp.Diagnostics.AddError("Cluster node missing after update",
+				"The update succeeded, but the panel then reported that the cluster node no longer exists. "+
+					"Run Terraform again to refresh state and plan recreation of the missing node.")
 			return
 		}
-		resp.Diagnostics.AddWarning("Failed to re-read node after update", getErr.Error())
-	} else if got != nil {
-		flattenNodeToModel(got, &plan)
+		resp.Diagnostics.AddError("Failed to re-read node after update",
+			"The cluster node was updated, but its current state could not be read. "+
+				"Prior observed state and acknowledged secret changes have been retained; run Terraform again to refresh it.\n\n"+getErr.Error())
+		return
 	}
+	flattenNodeToModel(got, &plan)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
@@ -284,6 +308,22 @@ func resolveNodeSecretsWOUpdate(plan *NodeResourceModel, state, config NodeResou
 	}
 }
 
+// acknowledgedNodeSecret retains only a known value actually submitted by the
+// successful update. A WO trigger is acknowledged only when its known config
+// value was resolved into that submission; null/unknown inputs prove nothing.
+// Upstream validateCredentials treats blank/whitespace apiToken as preserve,
+// unlike pinnedCertSha256 where an empty value clears the fingerprint.
+func acknowledgedNodeSecret(prior, planned, writeOnly types.String, priorVersion, plannedVersion types.Int64, blankIsNoop bool) (types.String, types.Int64) {
+	if planned.IsNull() || planned.IsUnknown() || (blankIsNoop && strings.TrimSpace(planned.ValueString()) == "") {
+		return prior, priorVersion
+	}
+	if !writeOnly.IsNull() && !writeOnly.IsUnknown() && planned.Equal(writeOnly) &&
+		woVersionTriggered(plannedVersion, priorVersion) {
+		priorVersion = plannedVersion
+	}
+	return planned, priorVersion
+}
+
 // nodeFromModel builds the API Node from the managed attributes of the model.
 func nodeFromModel(m *NodeResourceModel) *Node {
 	n := &Node{
@@ -340,6 +380,9 @@ func flattenNodeToModel(n *Node, m *NodeResourceModel) {
 	}
 	if n.ApiToken != "" {
 		m.ApiToken = types.StringValue(n.ApiToken)
+	} else if m.ApiToken.IsUnknown() {
+		// An omitted Optional+Computed credential must become known at apply.
+		m.ApiToken = types.StringNull()
 	}
 	m.Enable = types.BoolValue(n.Enable)
 	m.AllowPrivateAddress = types.BoolValue(n.AllowPrivateAddress)
@@ -348,6 +391,8 @@ func flattenNodeToModel(n *Node, m *NodeResourceModel) {
 	}
 	if n.PinnedCertSha256 != "" {
 		m.PinnedCertSha256 = types.StringValue(n.PinnedCertSha256)
+	} else if m.PinnedCertSha256.IsUnknown() {
+		m.PinnedCertSha256 = types.StringNull()
 	}
 	if n.InboundSyncMode != "" {
 		m.InboundSyncMode = types.StringValue(n.InboundSyncMode)

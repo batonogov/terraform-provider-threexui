@@ -127,7 +127,11 @@ func nodeResourceSchema() schema.Schema {
 			},
 			"api_token": schema.StringAttribute{
 				Optional:  true,
+				Computed:  true,
 				Sensitive: true,
+				// Preserve the non-echoed credential on unrelated updates.
+				// ModifyPlan overrides this when the WO version changes.
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 				Validators: []validator.String{
 					stringvalidator.PreferWriteOnlyAttribute(path.MatchRoot("api_token_wo")),
 				},
@@ -176,8 +180,10 @@ func nodeResourceSchema() schema.Schema {
 				Description: "TLS verification mode for the node web API. One of verify, skip, pin, mtls. Defaults to verify.",
 			},
 			"pinned_cert_sha256": schema.StringAttribute{
-				Optional:  true,
-				Sensitive: true,
+				Optional:      true,
+				Computed:      true,
+				Sensitive:     true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 				Validators: []validator.String{
 					stringvalidator.PreferWriteOnlyAttribute(path.MatchRoot("pinned_cert_sha256_wo")),
 				},
