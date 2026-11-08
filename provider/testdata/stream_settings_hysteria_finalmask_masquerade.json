@@ -1,0 +1,28 @@
+{
+  "network": "hysteria",
+  "security": "tls",
+  "hysteriaSettings": {
+    "version": 2,
+    "udpIdleTimeout": 60,
+    "masquerade": {
+      "type": "file",
+      "dir": "/var/www/site",
+      "url": "",
+      "rewriteHost": false,
+      "insecure": false,
+      "content": "",
+      "headers": {},
+      "statusCode": 0
+    }
+  },
+  "finalmask": {
+    "udp": [
+      {
+        "type": "salamander",
+        "settings": {
+          "password": "obfs-secret"
+        }
+      }
+    ]
+  }
+}

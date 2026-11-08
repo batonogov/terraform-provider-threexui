@@ -33,6 +33,7 @@ type InboundStreamSettingsModel struct {
 	KCPSettings         *InboundKCPSettingsModel            `tfsdk:"kcp_settings"`
 	HysteriaSettings    *InboundHysteriaStreamSettingsModel `tfsdk:"hysteria_settings"`
 	Sockopt             *InboundSockoptModel                `tfsdk:"sockopt"`
+	FinalMask           jsonObjectValue                     `tfsdk:"final_mask"`
 }
 
 type InboundExternalProxyModel struct {
@@ -145,10 +146,11 @@ type InboundKCPSettingsModel struct {
 }
 
 type InboundHysteriaStreamSettingsModel struct {
-	Protocol       types.String `tfsdk:"protocol"`
-	Version        types.Int64  `tfsdk:"version"`
-	Auth           types.String `tfsdk:"auth"`
-	UDPIdleTimeout types.Int64  `tfsdk:"udp_idle_timeout"`
+	Protocol       types.String                    `tfsdk:"protocol"`
+	Version        types.Int64                     `tfsdk:"version"`
+	Auth           types.String                    `tfsdk:"auth"`
+	UDPIdleTimeout types.Int64                     `tfsdk:"udp_idle_timeout"`
+	Masquerade     *InboundHysteriaMasqueradeModel `tfsdk:"masquerade"`
 }
 
 // ---------------------------------------------------------------------------
@@ -175,6 +177,7 @@ func inboundStreamSettingsBlockSchema() schema.SingleNestedBlock {
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
+			"final_mask": streamFinalMaskAttribute(),
 		},
 		Blocks: map[string]schema.Block{
 			"external_proxy": schema.ListNestedBlock{
@@ -718,6 +721,9 @@ func inboundStreamSettingsBlockSchema() schema.SingleNestedBlock {
 						},
 					},
 				},
+				Blocks: map[string]schema.Block{
+					"masquerade": hysteriaMasqueradeBlockSchema(),
+				},
 			},
 			"sockopt": sockoptBlockSchema(),
 		},
@@ -776,6 +782,9 @@ func expandStreamSettingsFromModel(m *InboundStreamSettingsModel) map[string]any
 	}
 	if m.Sockopt != nil {
 		out["sockopt"] = []any{expandSockoptFromModel(m.Sockopt)}
+	}
+	if !m.FinalMask.IsNull() && !m.FinalMask.IsUnknown() {
+		out["final_mask"] = m.FinalMask.ValueString()
 	}
 
 	return out
@@ -1092,6 +1101,9 @@ func expandHysteriaStreamSettingsFromModel(m *InboundHysteriaStreamSettingsModel
 	if !m.UDPIdleTimeout.IsNull() && !m.UDPIdleTimeout.IsUnknown() {
 		out["udp_idle_timeout"] = int(m.UDPIdleTimeout.ValueInt64())
 	}
+	if m.Masquerade != nil {
+		out["masquerade"] = []any{expandHysteriaMasqueradeFromModel(m.Masquerade)}
+	}
 	return out
 }
 
@@ -1176,6 +1188,12 @@ func flattenStreamSettingsToModel(data map[string]any) *InboundStreamSettingsMod
 		if raw, ok := v[0].(map[string]any); ok {
 			m.Sockopt = flattenSockoptToModel(raw)
 		}
+	}
+
+	if v, ok := data["final_mask"].(string); ok {
+		m.FinalMask = newJSONObjectValue(v)
+	} else {
+		m.FinalMask = jsonObjectNull()
 	}
 
 	return m
@@ -1607,6 +1625,11 @@ func flattenHysteriaStreamSettingsToModel(data map[string]any) *InboundHysteriaS
 		m.UDPIdleTimeout = types.Int64Value(int64(intValue(v)))
 	} else {
 		m.UDPIdleTimeout = types.Int64Null()
+	}
+	if v, ok := data["masquerade"].([]any); ok && len(v) > 0 {
+		if raw, ok := v[0].(map[string]any); ok {
+			m.Masquerade = flattenHysteriaMasqueradeToModel(raw)
+		}
 	}
 	return m
 }

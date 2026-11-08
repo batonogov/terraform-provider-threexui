@@ -190,6 +190,7 @@ func TestCorpusStreamSettings_RoundTrip(t *testing.T) {
 		{"stream_settings_xhttp_xmux.json", "XHTTP with xmux as the 3x-ui form stores it"},
 		{"stream_settings_sockopt.json", "WebSocket with full sockopt"},
 		{"stream_settings_hysteria.json", "Hysteria transport with auth and version"},
+		{"stream_settings_hysteria_finalmask_masquerade.json", "Hysteria with salamander finalmask and masquerade as the 3x-ui form stores it"},
 	}
 
 	for _, tc := range cases {
