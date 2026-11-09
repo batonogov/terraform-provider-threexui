@@ -975,6 +975,62 @@ func TestInboundResourceModifyPlanUnknownDynamicBlocks(t *testing.T) {
 			t.Fatalf("unknown client element must stay unknown, got %v", clients)
 		}
 	})
+
+	for _, tc := range []struct {
+		name        string
+		protocol    string
+		block       string
+		clientsPath *tftypes.AttributePath
+	}{
+		{
+			name:        "unknown WireGuard clients defer peer planning",
+			protocol:    "wireguard",
+			block:       "wireguard_settings",
+			clientsPath: tftypes.NewAttributePath().WithAttributeName("wireguard_settings").WithAttributeName("clients"),
+		},
+		{
+			name:        "unknown TUIC clients defer peer planning",
+			protocol:    "tuic",
+			block:       "tuic_settings",
+			clientsPath: tftypes.NewAttributePath().WithAttributeName("tuic_settings").WithAttributeName("clients"),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			stateModel := base(tc.protocol, "r")
+			planModel := base(tc.protocol, "r2")
+			switch tc.protocol {
+			case "wireguard":
+				planModel.WireguardSettings = &InboundWireguardSettingsModel{
+					MTU: types.ListNull(types.Int64Type), Gateway: types.ListNull(types.StringType), DNS: types.ListNull(types.StringType),
+				}
+			case "tuic":
+				planModel.TuicSettings = &InboundTuicSettingsModel{}
+			}
+			resp := run(stateModel, planModel, tc.clientsPath)
+			if resp.Diagnostics.HasError() {
+				t.Fatalf("unexpected error: %v", resp.Diagnostics)
+			}
+			var clients types.List
+			resp.Diagnostics.Append(resp.Plan.GetAttribute(ctx, path.Root(tc.block).AtName("clients"), &clients)...)
+			if !clients.IsUnknown() {
+				t.Fatalf("unknown clients must stay unknown, got %v", clients)
+			}
+		})
+	}
+
+	t.Run("null AmneziaWG clients need no conversion", func(t *testing.T) {
+		stateModel := base("amneziawg", "r")
+		stateModel.AmneziawgSettings = &InboundAmneziawgSettingsModel{}
+		planModel := base("amneziawg", "r2")
+		planModel.AmneziawgSettings = &InboundAmneziawgSettingsModel{}
+		plan := inboundResourceFixture(t, r, planModel)
+		state := tfsdk.State(inboundResourceFixture(t, r, stateModel))
+		resp := &resource.ModifyPlanResponse{Plan: plan}
+		r.ModifyPlan(ctx, resource.ModifyPlanRequest{Plan: plan, State: state}, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("unexpected error: %v", resp.Diagnostics)
+		}
+	})
 }
 
 // inboundResourceFixture builds plan/state fixtures for the inbound resource
