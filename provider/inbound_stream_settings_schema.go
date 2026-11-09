@@ -1217,7 +1217,7 @@ func flattenExternalProxyToModel(list []any) []InboundExternalProxyModel {
 		} else {
 			ep.Port = types.Int64Null()
 		}
-		if v, ok := raw["remark"].(string); ok && v != "" {
+		if v, ok := raw["remark"].(string); ok {
 			ep.Remark = types.StringValue(v)
 		} else {
 			ep.Remark = types.StringNull()

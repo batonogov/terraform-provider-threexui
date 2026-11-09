@@ -871,6 +871,112 @@ func TestInboundResourceModifyPlanMarksEditedPeerVolatileAttrs(t *testing.T) {
 	}
 }
 
+func TestInboundResourceModifyPlanUnknownDynamicBlocks(t *testing.T) {
+	r := &InboundResource{}
+	ctx := context.Background()
+	externalProxyPath := tftypes.NewAttributePath().WithAttributeName("stream_settings").WithAttributeName("external_proxy")
+	awgClientsPath := tftypes.NewAttributePath().WithAttributeName("amneziawg_settings").WithAttributeName("clients")
+
+	withUnknown := func(plan tfsdk.Plan, target *tftypes.AttributePath) tfsdk.Plan {
+		raw, err := tftypes.Transform(plan.Raw, func(p *tftypes.AttributePath, v tftypes.Value) (tftypes.Value, error) {
+			if p.Equal(target) {
+				return tftypes.NewValue(v.Type(), tftypes.UnknownValue), nil
+			}
+			return v, nil
+		})
+		if err != nil {
+			t.Fatalf("marking %s unknown: %v", target, err)
+		}
+		plan.Raw = raw
+		return plan
+	}
+	base := func(protocol, remark string) *InboundResourceModel {
+		return &InboundResourceModel{
+			ID: types.StringValue("7"), Remark: types.StringValue(remark), Enable: types.BoolValue(true),
+			Port: types.Int64Value(25070), Protocol: types.StringValue(protocol),
+		}
+	}
+	run := func(stateModel, planModel *InboundResourceModel, unknown *tftypes.AttributePath) *resource.ModifyPlanResponse {
+		plan := withUnknown(inboundResourceFixture(t, r, planModel), unknown)
+		state := tfsdk.State(inboundResourceFixture(t, r, stateModel))
+		resp := &resource.ModifyPlanResponse{Plan: plan}
+		r.ModifyPlan(ctx, resource.ModifyPlanRequest{Plan: plan, State: state}, resp)
+		return resp
+	}
+
+	t.Run("vless ignores an unknown external proxy list", func(t *testing.T) {
+		stateModel := base("vless", "r")
+		planModel := base("vless", "r2")
+		planModel.StreamSettings = &InboundStreamSettingsModel{}
+		resp := run(stateModel, planModel, externalProxyPath)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("unexpected error: %v", resp.Diagnostics)
+		}
+	})
+
+	t.Run("known AmneziaWG peers are still planned next to an unknown external proxy list", func(t *testing.T) {
+		stateModel := base("amneziawg", "r")
+		stateModel.AmneziawgSettings = &InboundAmneziawgSettingsModel{
+			Clients: []InboundAmneziawgClientModel{awgPeerModel("a", "old", 1000)},
+		}
+		planModel := base("amneziawg", "r2")
+		planModel.StreamSettings = &InboundStreamSettingsModel{}
+		planModel.AmneziawgSettings = &InboundAmneziawgSettingsModel{
+			Clients: []InboundAmneziawgClientModel{awgPeerModel("a", "new", 1000)},
+		}
+		resp := run(stateModel, planModel, externalProxyPath)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("unexpected error: %v", resp.Diagnostics)
+		}
+		var updatedAt attr.Value
+		resp.Diagnostics.Append(resp.Plan.GetAttribute(ctx,
+			path.Root("amneziawg_settings").AtName("clients").AtListIndex(0).AtName("updated_at"), &updatedAt)...)
+		if !updatedAt.IsUnknown() {
+			t.Fatalf("edited peer updated_at must be unknown, got %v", updatedAt)
+		}
+	})
+
+	t.Run("unknown AmneziaWG clients defer peer planning", func(t *testing.T) {
+		stateModel := base("amneziawg", "r")
+		stateModel.AmneziawgSettings = &InboundAmneziawgSettingsModel{
+			Clients: []InboundAmneziawgClientModel{awgPeerModel("a", "old", 1000)},
+		}
+		planModel := base("amneziawg", "r2")
+		planModel.AmneziawgSettings = &InboundAmneziawgSettingsModel{}
+		resp := run(stateModel, planModel, awgClientsPath)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("unexpected error: %v", resp.Diagnostics)
+		}
+		var clients types.List
+		resp.Diagnostics.Append(resp.Plan.GetAttribute(ctx,
+			path.Root("amneziawg_settings").AtName("clients"), &clients)...)
+		if !clients.IsUnknown() {
+			t.Fatalf("unknown clients must stay unknown, got %v", clients)
+		}
+	})
+
+	t.Run("unknown AmneziaWG client element defers peer planning", func(t *testing.T) {
+		stateModel := base("amneziawg", "r")
+		stateModel.AmneziawgSettings = &InboundAmneziawgSettingsModel{
+			Clients: []InboundAmneziawgClientModel{awgPeerModel("a", "old", 1000), awgPeerModel("b", "same", 1000)},
+		}
+		planModel := base("amneziawg", "r2")
+		planModel.AmneziawgSettings = &InboundAmneziawgSettingsModel{
+			Clients: []InboundAmneziawgClientModel{awgPeerModel("a", "new", 1000), awgPeerModel("b", "same", 1000)},
+		}
+		resp := run(stateModel, planModel, awgClientsPath.WithElementKeyInt(1))
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("unexpected error: %v", resp.Diagnostics)
+		}
+		var clients types.List
+		resp.Diagnostics.Append(resp.Plan.GetAttribute(ctx,
+			path.Root("amneziawg_settings").AtName("clients"), &clients)...)
+		if len(clients.Elements()) != 2 || !clients.Elements()[1].IsUnknown() {
+			t.Fatalf("unknown client element must stay unknown, got %v", clients)
+		}
+	})
+}
+
 // inboundResourceFixture builds plan/state fixtures for the inbound resource
 // from Go models.
 func inboundResourceFixture(t *testing.T, r *InboundResource, m *InboundResourceModel) tfsdk.Plan {

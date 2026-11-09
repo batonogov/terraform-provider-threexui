@@ -207,7 +207,7 @@ func expandExternalProxy(list []any) []any {
 				entry["port"] = p
 			}
 		}
-		if v, ok := m["remark"].(string); ok && v != "" {
+		if v, ok := m["remark"].(string); ok {
 			entry["remark"] = v
 		}
 		if v, ok := m["force_tls"].(string); ok && v != "" {

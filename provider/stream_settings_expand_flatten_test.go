@@ -437,6 +437,45 @@ func TestExpandFlatten_ExternalProxy_RoundTrip(t *testing.T) {
 	}
 }
 
+func TestExpandFlatten_ExternalProxy_EmptyRemarkWireRoundTrip(t *testing.T) {
+	model := &InboundStreamSettingsModel{
+		ExternalProxy: []InboundExternalProxyModel{{
+			Dest: types.StringValue("proxy.example.com"), Port: types.Int64Value(443), Remark: types.StringValue(""),
+		}},
+	}
+	expanded := expandStreamSettingsFromModel(model)
+	wire := expandExternalProxy(expanded["external_proxy"].([]any))
+	if len(wire) != 1 {
+		t.Fatalf("external proxy count = %d, want 1", len(wire))
+	}
+	entry := wire[0].(map[string]any)
+	if remark, ok := entry["remark"]; !ok || remark != "" {
+		t.Fatalf("wire remark = %#v (present %t), want an explicit empty string", remark, ok)
+	}
+	flat := flattenExternalProxyToModel(wire)
+	if len(flat) != 1 || flat[0].Remark.IsNull() || flat[0].Remark.IsUnknown() || flat[0].Remark.ValueString() != "" {
+		t.Fatalf("empty remark did not round-trip: %#v", flat)
+	}
+}
+
+func TestExpandFlatten_ExternalProxy_OmittedRemarkWireRoundTrip(t *testing.T) {
+	model := &InboundStreamSettingsModel{
+		ExternalProxy: []InboundExternalProxyModel{{
+			Dest: types.StringValue("proxy.example.com"), Port: types.Int64Value(443), Remark: types.StringNull(),
+		}},
+	}
+	expanded := expandStreamSettingsFromModel(model)
+	wire := expandExternalProxy(expanded["external_proxy"].([]any))
+	entry := wire[0].(map[string]any)
+	if remark, ok := entry["remark"]; ok {
+		t.Fatalf("omitted remark reached the wire as %#v", remark)
+	}
+	flat := flattenExternalProxyToModel(wire)
+	if len(flat) != 1 || !flat[0].Remark.IsNull() {
+		t.Fatalf("omitted remark did not stay null: %#v", flat)
+	}
+}
+
 func TestExpandFlatten_StreamSettingsModel_Nil(t *testing.T) {
 	if got := expandStreamSettingsFromModel(nil); got != nil {
 		t.Fatalf("expected nil for nil model, got %v", got)
