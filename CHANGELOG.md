@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.33.2](https://github.com/batonogov/terraform-provider-threexui/compare/v3.33.1...v3.33.2) (2026-11-09)
+
+
+### Bug Fixes
+
+* **inbound:** handle unknown plans and empty proxy remarks ([#499](https://github.com/batonogov/terraform-provider-threexui/issues/499)) ([99bcbe8](https://github.com/batonogov/terraform-provider-threexui/commit/99bcbe8e7926f810ec12dc411aef526bce828bde))
+
 ## [3.33.1](https://github.com/batonogov/terraform-provider-threexui/compare/v3.33.0...v3.33.1) (2026-11-08)
 
 
