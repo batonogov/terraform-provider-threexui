@@ -1687,6 +1687,75 @@ resource "threexui_inbound" "reset_day" {
 	})
 }
 
+func TestAccInboundExternalProxyDynamicEmptyRemark(t *testing.T) {
+	config := testAccProviderConfig() + `
+resource "threexui_inbound" "proxy_source" {
+  port     = 25134
+  protocol = "vless"
+  remark   = "acc-external-proxy-source"
+  enable   = true
+}
+
+resource "threexui_inbound" "proxy_target" {
+  port     = 25135
+  protocol = "vless"
+  remark   = "acc-external-proxy-target"
+  enable   = true
+
+  stream_settings {
+    network  = "tcp"
+    security = "none"
+
+    dynamic "external_proxy" {
+      for_each = toset([threexui_inbound.proxy_source.id])
+      content {
+        dest   = external_proxy.value
+        port   = 1080
+        remark = ""
+      }
+    }
+  }
+}
+`
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories(),
+		CheckDestroy:             testAccCheckInboundDestroyed,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccProviderConfig() + `
+resource "threexui_inbound" "proxy_target" {
+  port     = 25135
+  protocol = "vless"
+  remark   = "acc-external-proxy-target"
+  enable   = true
+
+  stream_settings {
+    network  = "tcp"
+    security = "none"
+  }
+}
+`,
+			},
+			{
+				Config: config,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttrPair(
+						"threexui_inbound.proxy_target", "stream_settings.external_proxy.0.dest",
+						"threexui_inbound.proxy_source", "id",
+					),
+					resource.TestCheckResourceAttr("threexui_inbound.proxy_target", "stream_settings.external_proxy.0.remark", ""),
+				),
+			},
+			{
+				Config:             config,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
 // --- TLS inbound with certificates (tls_settings.certificates) ---
 
 // testAccSelfSignedCertPEM generates a throwaway ECDSA self-signed

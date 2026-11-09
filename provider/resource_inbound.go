@@ -1299,26 +1299,24 @@ func (r *InboundResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 		resp.Plan.SetAttribute(ctx, p, types.Int64Unknown())
 	}
 
-	// Peers edited through the client endpoints get panel-rewritten values
-	// back for attributes the plan merely carried forward from state; promise
-	// nothing for those, or the apply fails with an inconsistent result. See
-	// editedOwnedPeerMarks.
-	var stateModel, planModel InboundResourceModel
-	resp.Diagnostics.Append(req.State.Get(ctx, &stateModel)...)
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &planModel)...)
-	// A plan/state produced by Terraform always decodes into the resource
-	// model; this guard only satisfies the framework contract and cannot fire
-	// with a well-formed plan.
+	// Read only the values used below. The full resource model keeps list
+	// blocks as Go slices, which cannot represent an unknown dynamic block.
+	var keepAliveIdle, keepAliveInterval types.Int64
+	sockoptPath := path.Root("stream_settings").AtName("sockopt")
+	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, sockoptPath.AtName("tcp_keep_alive_idle"), &keepAliveIdle)...)
+	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, sockoptPath.AtName("tcp_keep_alive_interval"), &keepAliveInterval)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 	// A keep-alive value inherited from state bypasses the config validator.
-	if planModel.StreamSettings != nil && planModel.StreamSettings.Sockopt != nil {
-		sockopt := planModel.StreamSettings.Sockopt
-		validateSockoptKeepAlive(sockopt.TCPKeepAliveIdle, sockopt.TCPKeepAliveInterval,
-			path.Root("stream_settings").AtName("sockopt"), &resp.Diagnostics)
+	validateSockoptKeepAlive(keepAliveIdle, keepAliveInterval, sockoptPath, &resp.Diagnostics)
+
+	var protocolValue types.String
+	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("protocol"), &protocolValue)...)
+	if resp.Diagnostics.HasError() || protocolValue.IsNull() || protocolValue.IsUnknown() {
+		return
 	}
-	protocol := planModel.Protocol.ValueString()
+	protocol := protocolValue.ValueString()
 	if !protocolReconcilesPeersViaClientAPI(protocol) {
 		return
 	}
@@ -1330,7 +1328,56 @@ func (r *InboundResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 		block = "tuic_settings"
 	}
 
-	if protocol == "amneziawg" && planModel.AmneziawgSettings != nil {
+	stateModel, planModel := &InboundResourceModel{}, &InboundResourceModel{}
+	switch protocol {
+	case "amneziawg":
+		stateModel.AmneziawgSettings = &InboundAmneziawgSettingsModel{}
+		planModel.AmneziawgSettings = &InboundAmneziawgSettingsModel{}
+	case "wireguard":
+		stateModel.WireguardSettings = &InboundWireguardSettingsModel{}
+		planModel.WireguardSettings = &InboundWireguardSettingsModel{}
+	case "tuic":
+		stateModel.TuicSettings = &InboundTuicSettingsModel{}
+		planModel.TuicSettings = &InboundTuicSettingsModel{}
+	}
+	readClients := func(source interface {
+		GetAttribute(context.Context, path.Path, any) diag.Diagnostics
+	}, target any) bool {
+		var list types.List
+		resp.Diagnostics.Append(source.GetAttribute(ctx, path.Root(block).AtName("clients"), &list)...)
+		if resp.Diagnostics.HasError() || list.IsUnknown() {
+			return false
+		}
+		if list.IsNull() {
+			return true
+		}
+		for _, element := range list.Elements() {
+			if element.IsUnknown() {
+				return false
+			}
+		}
+		resp.Diagnostics.Append(list.ElementsAs(ctx, target, false)...)
+		return !resp.Diagnostics.HasError()
+	}
+	switch protocol {
+	case "amneziawg":
+		if !readClients(req.State, &stateModel.AmneziawgSettings.Clients) ||
+			!readClients(req.Plan, &planModel.AmneziawgSettings.Clients) {
+			return
+		}
+	case "wireguard":
+		if !readClients(req.State, &stateModel.WireguardSettings.Clients) ||
+			!readClients(req.Plan, &planModel.WireguardSettings.Clients) {
+			return
+		}
+	case "tuic":
+		if !readClients(req.State, &stateModel.TuicSettings.Clients) ||
+			!readClients(req.Plan, &planModel.TuicSettings.Clients) {
+			return
+		}
+	}
+
+	if protocol == "amneziawg" {
 		for i, peer := range planModel.AmneziawgSettings.Clients {
 			p := path.Root(block).AtName("clients").AtListIndex(i).AtName("keep_alive")
 			switch {
@@ -1347,7 +1394,7 @@ func (r *InboundResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 	// back for attributes the plan merely carried forward from state; promise
 	// nothing for those, or the apply fails with an inconsistent result. See
 	// editedOwnedPeerMarks.
-	for idx, attrs := range editedOwnedPeerMarks(protocol, &stateModel, &planModel) {
+	for idx, attrs := range editedOwnedPeerMarks(protocol, stateModel, planModel) {
 		for _, attrName := range attrs {
 			p := path.Root(block).AtName("clients").AtListIndex(idx).AtName(attrName)
 			var unknown attr.Value
@@ -1367,7 +1414,7 @@ func (r *InboundResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 	// null (a new list element has no prior state for UseStateForUnknown to
 	// copy), but the panel materialises concrete values on save. Plan them as
 	// unknown instead. See ownedPeerClientAttrTypes.
-	for _, idx := range newOwnedPeerIndexes(protocol, &stateModel, &planModel) {
+	for _, idx := range newOwnedPeerIndexes(protocol, stateModel, planModel) {
 		for name, typ := range ownedPeerClientAttrTypes[protocol] {
 			p := path.Root(block).AtName("clients").AtListIndex(idx).AtName(name)
 			var v attr.Value
