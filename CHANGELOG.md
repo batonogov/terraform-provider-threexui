@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.33.1](https://github.com/batonogov/terraform-provider-threexui/compare/v3.33.0...v3.33.1) (2026-11-08)
+
+
+### Bug Fixes
+
+* **inbound:** validate configs whose dynamic blocks are not yet known ([#495](https://github.com/batonogov/terraform-provider-threexui/issues/495)) ([e745579](https://github.com/batonogov/terraform-provider-threexui/commit/e7455794206e6d4da85e9fbad2e6dc2a04fde0d8))
+
 ## [3.33.0](https://github.com/batonogov/terraform-provider-threexui/compare/v3.32.1...v3.33.0) (2026-11-08)
 
 
