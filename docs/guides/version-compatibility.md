@@ -19,7 +19,7 @@ This policy covers Terraform CLI. It does not declare OpenTofu compatibility; Op
 
 ## Support policy
 
-The provider officially supports every released patch across all supported 3x-ui minor lines — see the compatibility table in the README. The acceptance matrix exercises each version on each push to `main` and every pull request. Older lines (2.9.x, 3.0.x and earlier) were dropped from the test matrix in provider v3.4.0; 3.1.x was dropped when 3.7.x was added; 3.2.x was dropped when 3.8.x was added.
+The provider officially supports every released patch across all supported 3x-ui minor lines — see the compatibility table in the README. The acceptance matrix exercises only the latest supported patch listed in `compat-versions.json` for each minor line on each push to `main` and every pull request; weekly flake tracking uses the same selection. Earlier patches remain supported but are not tested on every run. The table below retains previously tested releases. Older lines (2.9.x, 3.0.x and earlier) were dropped from the test matrix in provider v3.4.0; 3.1.x was dropped when 3.7.x was added; 3.2.x was dropped when 3.8.x was added.
 
 ## Compatibility table
 
@@ -54,7 +54,7 @@ Upstream details: [v3.11.0 release](https://github.com/MHSanaei/3x-ui/releases/t
 
 ## v3.10.x scope and upgrade notes
 
-The compatibility matrix tests the provider's existing resources on v3.10.0 and v3.10.2. DNS/routing `script`, DNS `server.id`, and TLS `use_system_ca` are modeled. MASQUE inbounds/outbounds, MASQUE and XDRIVE transports, and the new MTProto handshake-limit control are not yet exposed. Do not import or manage MASQUE/XDRIVE configurations with the typed inbound/outbound resources: unmodeled settings cannot round-trip and a write can remove them. The read-only `threexui_xray_config` data source can inspect the raw configuration.
+The compatibility matrix tests the provider's existing resources on the latest supported v3.10.x patch listed in `compat-versions.json`. DNS/routing `script`, DNS `server.id`, and TLS `use_system_ca` are modeled. MASQUE inbounds/outbounds, MASQUE and XDRIVE transports, and the new MTProto handshake-limit control are not yet exposed. Do not import or manage MASQUE/XDRIVE configurations with the typed inbound/outbound resources: unmodeled settings cannot round-trip and a write can remove them. The read-only `threexui_xray_config` data source can inspect the raw configuration.
 
 Before upgrading a managed panel:
 

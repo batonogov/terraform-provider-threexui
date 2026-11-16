@@ -15,6 +15,8 @@ on:
       - CHANGELOG.md
       - compat-versions.json
       - terraform-versions.json
+      - scripts/compat-matrix.jq
+      - scripts/test-compat-matrix.sh
   push:
     branches: [main]
     paths:
@@ -29,6 +31,8 @@ on:
       - CHANGELOG.md
       - compat-versions.json
       - terraform-versions.json
+      - scripts/compat-matrix.jq
+      - scripts/test-compat-matrix.sh
 
 # Cancel superseded runs on the same PR/branch — avoids wasting minutes
 # and burning the GHCR pull quota on stale commits when force-pushing.
@@ -63,6 +67,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Check version surfaces are in sync
         run: scripts/sync-versions.sh check
+      - name: Test compat matrix selection
+        run: bash scripts/test-compat-matrix.sh
       - name: Validate Terraform support manifest and prepare matrix
         id: terraform
         run: |
@@ -268,7 +274,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - id: set
         run: |
-          MATRIX=$(jq -c '[.versions[] | select(.supported == true) | .version]' compat-versions.json)
+          # Test only the latest supported patch of each minor line.
+          MATRIX=$(jq -c -f scripts/compat-matrix.jq compat-versions.json)
           echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
 
   acceptance-matrix:

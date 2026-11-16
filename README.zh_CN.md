@@ -95,7 +95,7 @@ resource "threexui_inbound_client" "client_a" {
 
 ## 兼容性
 
-**支持策略:** 本 provider 正式支持所有受支持的 3x-ui 次要版本线中的每个已发布补丁版本 —— 见下方兼容性表格。acceptance 矩阵在每次 push 到 `main` 和每个 pull request 时测试每个版本。
+**支持策略:** 本 provider 正式支持所有受支持的 3x-ui 次要版本线中的每个已发布补丁版本 —— 见下方兼容性表格。acceptance 矩阵在每次 push 到 `main` 和每个 pull request 时，仅测试 `compat-versions.json` 中每条次要版本线的最新受支持补丁版本。较早的补丁版本仍受支持；表格保留此前测试过的版本。
 
 | 3x-ui 版本 | 状态 |
 | --- | --- |
