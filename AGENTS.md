@@ -82,6 +82,7 @@
   `inboundClientMu` (clients). Inbound writes that mutate/reconcile clients share
   the last lock with `inbound_client`; release it before
   `releasePeerEmailsRemovedByUpdate`, which locks it itself.
+  These locks are process-local, not protection across provider processes or Terraform runs.
 - WireGuard/AmneziaWG/TUIC peers belong to `threexui_inbound`, **not**
   `threexui_inbound_client` (`protocolOwnsClients`). Other protocols' clients belong
   to the separate client resource. Do not re-inject removed inbound-owned peers
@@ -114,6 +115,12 @@
 
 ## Terraform planning and secrets
 
+- Provider configurations and alias selection are static; do not generate them with
+  `for_each`. Child modules must declare the `batonogov/threexui` provider source.
+- Provider authentication precedes resource updates. For credential rotation, keep
+  provider/resource desired credentials aligned and supply the currently active
+  credentials through `bootstrap_username` / `bootstrap_password` before each rotation.
+  Fresh v3.11.0+ panels generate random initial credentials, not admin/admin.
 - Do not decode the entire inbound config/plan into Go slice-backed models during
   validation or `ModifyPlan`: dynamic blocks can be unknown. Read needed paths
   with `GetAttribute` into framework `types.*` values and defer unknown branches.

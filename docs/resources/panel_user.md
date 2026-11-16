@@ -13,6 +13,8 @@ This is a singleton resource -- only one instance should exist per provider. Del
 
 ~> **Warning:** After applying changes, keep the provider's steady-state `username` and `password` in sync with this resource. For first-run bootstrap of a fresh panel, the provider-level `bootstrap_username` and `bootstrap_password` arguments can authenticate with the initial credentials once, then this resource can rotate the panel to the steady-state credentials during the same apply.
 
+Before each later rotation, set the provider's bootstrap credentials to the panel's currently active username and password, then change the desired credentials in both the provider and this resource. The provider authenticates before updating resources, so the original installation credentials cannot bootstrap another rotation.
+
 ## Example Usage
 
 ```hcl

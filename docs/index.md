@@ -87,8 +87,8 @@ provider "threexui" {
   username = var.threexui_username
   password = var.threexui_password
 
-  bootstrap_username = "admin"
-  bootstrap_password = "admin"
+  bootstrap_username = var.bootstrap_username
+  bootstrap_password = var.bootstrap_password
 }
 
 resource "threexui_panel_user" "admin" {
@@ -96,6 +96,10 @@ resource "threexui_panel_user" "admin" {
   password = var.threexui_password
 }
 ```
+
+Fresh 3x-ui v3.11.0+ panels generate random first-user credentials, not `admin`/`admin`. Supply those initial credentials from the first-start log, or set explicit ones with `x-ui setting -username <user> -password <pass>`. Declare password input variables as `sensitive = true`. See the [panel-user example](https://github.com/batonogov/terraform-provider-threexui/tree/main/examples/panel-user) for the complete configuration.
+
+Before each later rotation, set `bootstrap_username` and `bootstrap_password` to the panel's currently active credentials, then change the desired steady-state values. The provider must authenticate before the resource can update credentials; the original installation credentials no longer work after the first rotation.
 
 3x-ui v3 protects login and unsafe API requests with CSRF tokens. The provider fetches and refreshes those tokens automatically; no additional configuration is required.
 

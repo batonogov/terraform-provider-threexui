@@ -36,6 +36,8 @@ Running 3x-ui in production means dozens of inbounds, hundreds of clients, and X
 
 ## Quick Start
 
+Replace the sample `admin`/`admin` credentials with your panel's actual credentials. Fresh 3x-ui v3.11.0+ panels generate random first-user credentials; read them from the first-start log or set explicit ones with `x-ui setting -username <user> -password <pass>`.
+
 ```hcl
 terraform {
   required_providers {
@@ -129,7 +131,7 @@ Newer protocol features are guarded with `requireMinVersion` and skip automatica
 | [Subscription balancer](examples/sub-balancer/) | Balance a JSON-subscription profile across inbounds on the client (v3.7.0+) |
 | [Xray observatory](examples/observatory/) | Configure outbound latency probes (v3.4.2+) |
 | [Xray version](examples/xray-version/) | Pin the installed Xray core version |
-| [Multi-server fleet](examples/multi-server/) | Manage many 3x-ui hosts via a reusable module + `for_each` |
+| [Multi-server fleet](examples/multi-server/) | Manage many 3x-ui hosts via a reusable module and static provider aliases |
 | [Import existing resources](examples/import-existing/) | Import existing 3x-ui resources into Terraform state |
 
 ## Guides
@@ -148,7 +150,7 @@ Full documentation is available on the [Terraform Registry](https://registry.ter
 
 | Resource | Description |
 | --- | --- |
-| `threexui_inbound` | Inbound proxy (vless, vmess, trojan, shadowsocks, http, mixed, wireguard, amneziawg, tunnel, tun, hysteria, mtproto; TUN 3.2.7+, MTProto 3.3.0+, AmneziaWG 3.7.0+) |
+| `threexui_inbound` | Inbound proxy (vless, vmess, trojan, shadowsocks, http, mixed, wireguard, amneziawg, tunnel, tun, hysteria, mtproto, tuic; TUN 3.2.7+, MTProto 3.3.0+, AmneziaWG 3.7.0+, TUIC 3.8.0+) |
 | `threexui_inbound_client` | Client within an inbound |
 | `threexui_node` | Cluster node / multi-node registration |
 | `threexui_panel_general` | General panel settings |

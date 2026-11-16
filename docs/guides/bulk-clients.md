@@ -54,6 +54,9 @@ carol@example.com,sales,,200,7
 ```hcl
 terraform {
   required_providers {
+    threexui = {
+      source = "batonogov/threexui"
+    }
     time = {
       source  = "hashicorp/time"
       version = "~> 0.13"
@@ -123,6 +126,14 @@ module "sales" {
 Inside `./modules/team/main.tf`:
 
 ```hcl
+terraform {
+  required_providers {
+    threexui = {
+      source = "batonogov/threexui"
+    }
+  }
+}
+
 variable "inbound_id"  { type = number }
 variable "team_name"   { type = string }
 variable "members"     { type = list(string) }
@@ -142,8 +153,7 @@ Each team's section is small, focused, and reviewable independently.
 
 ## Performance notes
 
-- Client operations within a single inbound are serialized via an internal mutex (the panel itself races otherwise). 100 clients on one inbound take roughly 100 × the round-trip time.
-- Spreading clients across multiple inbounds parallelizes safely.
+- Client writes within one provider process are serialized across inbounds. Modules sharing a provider configuration do not parallelize these writes. Separate provider processes do not share this lock; avoid concurrently managing the same panel through separate aliases or Terraform runs.
 - The provider retries transient HTTP 5xx on idempotent writes (default `max_retries = 1`). Bumping it to `2`–`3` helps on flaky networks.
 
 ## What not to do

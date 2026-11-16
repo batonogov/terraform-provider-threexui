@@ -61,7 +61,7 @@ func TestInboundProtocolDescriptionListsVersionedProtocols(t *testing.T) {
 	if !ok {
 		t.Fatalf("protocol has unexpected schema type %T", resp.Schema.Attributes["protocol"])
 	}
-	for _, want := range []string{"tun", "v3.2.7", "mtproto", "v3.3.0"} {
+	for _, want := range []string{"tun", "v3.2.7", "mtproto", "v3.3.0", "amneziawg", "v3.7.0", "tuic", "v3.8.0"} {
 		if !strings.Contains(protocol.Description, want) {
 			t.Errorf("protocol description must contain %q: %s", want, protocol.Description)
 		}

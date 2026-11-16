@@ -36,6 +36,8 @@
 
 ## 快速开始
 
+请将示例中的 `admin`/`admin` 替换为面板的实际凭据。全新安装的 3x-ui v3.11.0+ 会随机生成首个用户的凭据；请从首次启动日志中获取，或通过 `x-ui setting -username <user> -password <pass>` 显式设置。
+
 ```hcl
 terraform {
   required_providers {
@@ -129,7 +131,7 @@ resource "threexui_inbound_client" "client_a" {
 | [订阅负载均衡](examples/sub-balancer/) | 在客户端于多个 inbound 之间负载均衡的 JSON 订阅配置 (v3.7.0+) |
 | [Xray Observatory](examples/observatory/) | 配置 outbound 延迟探测 (v3.4.2+) |
 | [Xray 版本](examples/xray-version/) | 固定已安装的 Xray core 版本 |
-| [多服务器集群](examples/multi-server/) | 通过模块 + `for_each` 管理多台 3x-ui |
+| [多服务器集群](examples/multi-server/) | 通过可复用模块和静态提供程序别名管理多台 3x-ui |
 | [导入已有资源](examples/import-existing/) | 把已有的 3x-ui 资源拉进 state |
 
 ## 操作指南
@@ -148,7 +150,7 @@ resource "threexui_inbound_client" "client_a" {
 
 | Resource | 说明 |
 | --- | --- |
-| `threexui_inbound` | inbound 代理(vless、vmess、trojan、shadowsocks、http、mixed、wireguard、amneziawg、tunnel、tun、hysteria、mtproto；TUN 3.2.7+，MTProto 3.3.0+，AmneziaWG 3.7.0+) |
+| `threexui_inbound` | inbound 代理(vless、vmess、trojan、shadowsocks、http、mixed、wireguard、amneziawg、tunnel、tun、hysteria、mtproto、tuic；TUN 3.2.7+，MTProto 3.3.0+，AmneziaWG 3.7.0+，TUIC 3.8.0+) |
 | `threexui_inbound_client` | inbound 内的客户端 |
 | `threexui_node` | 集群节点 / multi-node 注册 |
 | `threexui_panel_general` | 面板通用设置 |

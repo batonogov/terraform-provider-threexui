@@ -38,6 +38,8 @@
 
 ## بداية سريعة
 
+استبدل بيانات المثال `admin`/`admin` ببيانات الدخول الفعلية للوحة. التثبيتات الجديدة من 3x-ui v3.11.0+ بتولّد بيانات عشوائية لأول مستخدم؛ هاتها من سجل أول تشغيل أو حدّدها بأمر `x-ui setting -username <user> -password <pass>`.
+
 ```hcl
 terraform {
   required_providers {
@@ -135,7 +137,7 @@ resource "threexui_inbound_client" "client_a" {
 | [balancer الاشتراك](examples/sub-balancer/) | ملف تعريف في اشتراك JSON يوازن بين inbounds من جهة العميل (v3.7.0+) |
 | [Xray Observatory](examples/observatory/) | إعداد فحوصات زمن وصول outbounds (v3.4.2+) |
 | [إصدار Xray](examples/xray-version/) | تثبيت إصدار Xray core المُثبّت |
-| [أسطول متعدد السيرفرات](examples/multi-server/) | إدارة كذا 3x-ui من خلال module و `for_each` |
+| [أسطول متعدد السيرفرات](examples/multi-server/) | إدارة كذا 3x-ui من خلال module قابل لإعادة الاستخدام وأسماء مستعارة ثابتة للـ provider |
 | [Import موارد موجودة](examples/import-existing/) | جلب موارد 3x-ui الموجودة فعلًا للـ state |
 
 ## الأدلة
@@ -154,7 +156,7 @@ resource "threexui_inbound_client" "client_a" {
 
 | Resource | الوصف |
 | --- | --- |
-| `threexui_inbound` | inbound (vless, vmess, trojan, shadowsocks, http, mixed, wireguard, amneziawg, tunnel, tun, hysteria, mtproto؛ TUN من 3.2.7 وMTProto من 3.3.0 وAmneziaWG من 3.7.0) |
+| `threexui_inbound` | inbound (vless, vmess, trojan, shadowsocks, http, mixed, wireguard, amneziawg, tunnel, tun, hysteria, mtproto, tuic؛ TUN من 3.2.7 وMTProto من 3.3.0 وAmneziaWG من 3.7.0 وTUIC من 3.8.0) |
 | `threexui_inbound_client` | عميل داخل inbound |
 | `threexui_node` | عقدة الكتلة / تسجيل multi-node |
 | `threexui_panel_general` | إعدادات اللوحة العامة |

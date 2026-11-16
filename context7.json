@@ -14,13 +14,16 @@
     "3x-ui-3.5.0",
     "3x-ui-3.6.0",
     "3x-ui-3.7.0",
+    "3x-ui-3.8.0",
     "3x-ui-3.8.5",
     "3x-ui-3.9.0",
+    "3x-ui-3.10.0",
     "3x-ui-3.10.2",
     "3x-ui-3.11.0",
     ".cache",
     ".claude",
     ".git",
+    ".pi",
     "node_modules"
   ],
   "excludeFiles": [
@@ -32,8 +35,11 @@
   "rules": [
     "This repository is a Terraform Provider (type name `threexui`), NOT the 3x-ui panel. Users manage resources/data sources such as threexui_inbound, threexui_inbound_client, threexui_panel_*, and threexui_xray_*.",
     "Resources/data sources are built with terraform-plugin-framework (not SDKv2). Schema helpers live in provider/<area>_schema.go.",
-    "JSON string fields (settings, stream_settings, sniffing) convert through three layers: typed model (types.String/Int64/Bool) <-> untyped map <-> JSON string. See provider/settings.go and provider/stream_settings.go.",
+    "Inbound settings, stream_settings, and sniffing use typed Terraform blocks/attributes, not raw JSON strings in HCL. Conversion has three layers: typed Terraform models <-> map[string]any (expand/flatten) <-> panel API JSON strings (build). See provider/settings.go and provider/stream_settings.go.",
     "The 3x-ui-<version>/ directories are read-only upstream source snapshots used only to verify API/struct truth for drift tests. Never cite their code as the provider's own API.",
-    "Supported 3x-ui versions: v3.3.x, v3.4.x, v3.5.x, v3.6.x, v3.7.x, v3.8.x, v3.9.x, v3.10.x, v3.11.x (up to v3.11.0). Version-specific features are gated with requireMinVersion in acceptance tests."
+    "Use compat-versions.json for supported/default 3x-ui versions and terraform-versions.json for Terraform CLI support. Feature minimums and unmodeled configurations are documented in docs/guides/version-compatibility.md; acceptance tests use requireMinVersion/requireBelowVersion.",
+    "Provider authentication happens before resource updates. Keep desired provider and threexui_panel_user credentials aligned; before each rotation, set bootstrap_username/bootstrap_password to the currently active credentials. Fresh 3x-ui v3.11.0+ panels generate random first-user credentials, not admin/admin.",
+    "Provider configurations and alias selection must be static; Terraform cannot generate providers with for_each. Child modules must declare source batonogov/threexui. See examples/multi-server for static aliases.",
+    "Shared-document mutexes protect only one provider process. Separate provider processes or Terraform runs do not share locks; do not concurrently manage the same panel through separate aliases or runs."
   ]
 }
