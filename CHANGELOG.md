@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.33.3](https://github.com/batonogov/terraform-provider-threexui/compare/v3.33.2...v3.33.3) (2026-11-16)
+
+
+### Bug Fixes
+
+* **inbound:** apply TLS fingerprint to panel client settings ([#504](https://github.com/batonogov/terraform-provider-threexui/issues/504)) ([3465e6a](https://github.com/batonogov/terraform-provider-threexui/commit/3465e6a445f61af460ca3e18b63b5bf94e7ff95b))
+
 ## [3.33.2](https://github.com/batonogov/terraform-provider-threexui/compare/v3.33.1...v3.33.2) (2026-11-09)
 
 
