@@ -671,7 +671,7 @@ Unlike AmneziaWG, the panel generates nothing here: the `certificate` / `private
 
 - `tls_settings` (Optional, Block) - TLS settings (used when `security = "tls"`).
   - `server_name` (Optional, String) - Server name (SNI) for the TLS handshake.
-  - `fingerprint` (Optional, String) - Client uTLS fingerprint (e.g. `chrome`, `firefox`) advertised through panel-generated links and subscriptions. Stored in the panel's `tlsSettings.settings.fingerprint`; it does not change the server's TLS handshake. Hysteria2 uses QUIC TLS, not uTLS, so storing a fingerprint does not enable browser impersonation for Hysteria2.
+  - `fingerprint` (Optional, String) - Client uTLS fingerprint (e.g. `chrome`, `firefox`) advertised through panel-generated links and subscriptions. Stored in the panel's `tlsSettings.settings.fingerprint`; it does not change the server's TLS handshake. In Xray v26.10.21, the Hysteria2 transport does not use this selector to choose its ClientHello; its separate, default-enabled ChromeParrot mode uses a Chrome-specific QUIC/uTLS preset. Storing `firefox` therefore does not select Firefox impersonation for that implementation. Other clients and versions may behave differently.
   - `use_system_ca` (Optional, Boolean) - Use the system CA store for outbound TLS (shared schema, 3x-ui v3.10.0+).
   - `allow_insecure` (Optional, Boolean) - Whether to allow insecure TLS connections.
   - `alpn` (Optional, List of String) - ALPN list (e.g. `["h2", "http/1.1"]`).

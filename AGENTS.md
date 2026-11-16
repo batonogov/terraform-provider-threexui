@@ -74,8 +74,9 @@
 - Inbound TLS fingerprints belong in `tlsSettings.settings.fingerprint` (panel editor
   and `internal/sub/json_service.go:844-857` in 3x-ui v3.11.0); outbounds need
   `tlsSettings.fingerprint`. Keep the outbound lift and nested-first legacy read.
-  Hysteria2 uses QUIC TLS, not uTLS: this controls panel/subscription metadata,
-  not browser impersonation (#503).
+  Xray v26.10.21's Hysteria2 transport ignores this fingerprint selector, but its
+  separate ChromeParrot mode does use QUIC/uTLS; do not claim Hysteria2 never uses uTLS
+  (`apernet/quic-go@184d081eef3e/internal/handshake/tls_conn_utls.go`, #503).
 - Three separate read-modify-write locks protect shared documents:
   `settingsMu` (panel settings), `xrayTemplateMu` (Xray template), and
   `inboundClientMu` (clients). Inbound writes that mutate/reconcile clients share
