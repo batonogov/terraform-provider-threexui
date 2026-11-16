@@ -330,7 +330,7 @@ resource "threexui_inbound" "mtproto" {
 ### Top-level
 
 - `port` (Required, Number) - Port number for the inbound.
-- `protocol` (Required, String) - Protocol type (`vless`, `vmess`, `trojan`, `shadowsocks`, `http`, `mixed`, `wireguard`, `amneziawg`, `tunnel`, `tun`, `hysteria`, `mtproto`). Legacy `socks` and `dokodemo-door` are available only on panels before 3x-ui v3.2.0; use `mixed` and `tunnel` on v3.2.0+. `tun` is a tunnel alias available on v3.2.7+, `mtproto` is available on v3.3.0+, `amneziawg` on v3.7.0+, and `tuic` on v3.8.0+.
+- `protocol` (Required, String) - Protocol type (`vless`, `vmess`, `trojan`, `shadowsocks`, `http`, `mixed`, `wireguard`, `amneziawg`, `tunnel`, `tun`, `hysteria`, `mtproto`, `tuic`). Legacy `socks` and `dokodemo-door` are available only on panels before 3x-ui v3.2.0; use `mixed` and `tunnel` on v3.2.0+. `tun` is a tunnel alias available on v3.2.7+, `mtproto` is available on v3.3.0+, `amneziawg` on v3.7.0+, and `tuic` on v3.8.0+.
 - `enable` (Optional, Boolean) - Whether the inbound is enabled. Default is `true`.
 - `remark` (Optional, String) - A label/name for the inbound.
 - `listen` (Optional, String) - Listen address.

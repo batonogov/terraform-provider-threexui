@@ -129,7 +129,7 @@ Daha yeni protokol özellikleri `requireMinVersion` ile korunur ve eski sürüml
 | [Abonelik dengeleyicisi](examples/sub-balancer/) | İstemcide inbound'lar arasında dengeleme yapan JSON abonelik profili (v3.7.0+) |
 | [Xray Observatory](examples/observatory/) | Outbound gecikme problarını yapılandırma (v3.4.2+) |
 | [Xray sürümü](examples/xray-version/) | Kurulu Xray core sürümünü sabitleme |
-| [Çok sunuculu filo](examples/multi-server/) | Yeniden kullanılabilir modül + `for_each` ile birden fazla 3x-ui barındırmasını yönetme |
+| [Çok sunuculu filo](examples/multi-server/) | Yeniden kullanılabilir modül ve statik sağlayıcı takma adları ile birden fazla 3x-ui sunucusunu yönetme |
 | [Mevcut kaynakları içe aktarma](examples/import-existing/) | Mevcut 3x-ui kaynaklarını Terraform state'ine aktarma |
 
 ## Kılavuzlar
@@ -148,7 +148,7 @@ Tam belgeler [Terraform Registry](https://registry.terraform.io/providers/batono
 
 | Kaynak | Açıklama |
 | --- | --- |
-| `threexui_inbound` | Inbound proxy (vless, vmess, trojan, shadowsocks, http, mixed, wireguard, amneziawg, tunnel, tun, hysteria, mtproto; TUN 3.2.7+, MTProto 3.3.0+, AmneziaWG 3.7.0+) |
+| `threexui_inbound` | Inbound proxy (vless, vmess, trojan, shadowsocks, http, mixed, wireguard, amneziawg, tunnel, tun, hysteria, mtproto, tuic; TUN 3.2.7+, MTProto 3.3.0+, AmneziaWG 3.7.0+, TUIC 3.8.0+) |
 | `threexui_inbound_client` | Bir inbound içindeki istemci |
 | `threexui_node` | Küme düğümü / multi-node kaydı |
 | `threexui_panel_general` | Genel panel ayarları |

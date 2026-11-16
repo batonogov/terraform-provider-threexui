@@ -135,7 +135,7 @@ resource "threexui_inbound_client" "client_a" {
 | [بالانسر subscription](examples/sub-balancer/) | پروفایل subscription JSON با بالانس سمت کلاینت بین اینباندها (v3.7.0+) |
 | [Observatory اکس‌ری](examples/observatory/) | پیکربندی سنجش تأخیر اوت‌باندها (v3.4.2+) |
 | [نسخهٔ Xray](examples/xray-version/) | ثابت‌کردن نسخهٔ نصب‌شدهٔ Xray core |
-| [ناوگان چند سروری](examples/multi-server/) | مدیریت چندین هاست 3x-ui با ماژول و `for_each` |
+| [ناوگان چند سروری](examples/multi-server/) | مدیریت چندین هاست 3x-ui با ماژول قابل استفاده مجدد و نام‌های مستعار ثابت ارائه‌دهنده |
 | [import منابع موجود](examples/import-existing/) | وارد کردن منابع موجود 3x-ui به state |
 
 ## راهنماها
@@ -154,7 +154,7 @@ resource "threexui_inbound_client" "client_a" {
 
 | Resource | توضیح |
 | --- | --- |
-| `threexui_inbound` | اینباند (vless, vmess, trojan, shadowsocks, http, mixed, wireguard, amneziawg, tunnel, tun, hysteria, mtproto؛ TUN از 3.2.7، MTProto از 3.3.0 و AmneziaWG از 3.7.0) |
+| `threexui_inbound` | اینباند (vless, vmess, trojan, shadowsocks, http, mixed, wireguard, amneziawg, tunnel, tun, hysteria, mtproto, tuic؛ TUN از 3.2.7، MTProto از 3.3.0، AmneziaWG از 3.7.0 و TUIC از 3.8.0) |
 | `threexui_inbound_client` | کلاینت داخل اینباند |
 | `threexui_node` | گره کلاستر / ثبت multi-node |
 | `threexui_panel_general` | تنظیمات عمومی پنل |

@@ -129,7 +129,7 @@ resource "threexui_inbound_client" "client_a" {
 | [Балансировщик подписки](examples/sub-balancer/) | Профиль JSON-подписки с клиентской балансировкой между инбаундами (v3.7.0+) |
 | [Xray Observatory](examples/observatory/) | Настройка проверок задержки аутбаундов (v3.4.2+) |
 | [Версия Xray](examples/xray-version/) | Фиксация установленной версии Xray core |
-| [Флот серверов](examples/multi-server/) | Управление несколькими 3x-ui через переиспользуемый модуль и `for_each` |
+| [Флот серверов](examples/multi-server/) | Управление несколькими 3x-ui через переиспользуемый модуль и статические псевдонимы провайдера |
 | [Импорт существующих ресурсов](examples/import-existing/) | Затащить уже существующие ресурсы 3x-ui в state |
 
 ## Гайды
@@ -148,7 +148,7 @@ resource "threexui_inbound_client" "client_a" {
 
 | Ресурс | Описание |
 | --- | --- |
-| `threexui_inbound` | Инбаунд (vless, vmess, trojan, shadowsocks, http, mixed, wireguard, amneziawg, tunnel, tun, hysteria, mtproto; TUN с 3.2.7, MTProto с 3.3.0, AmneziaWG с 3.7.0) |
+| `threexui_inbound` | Инбаунд (vless, vmess, trojan, shadowsocks, http, mixed, wireguard, amneziawg, tunnel, tun, hysteria, mtproto, tuic; TUN с 3.2.7, MTProto с 3.3.0, AmneziaWG с 3.7.0, TUIC с 3.8.0) |
 | `threexui_inbound_client` | Клиент внутри инбаунда |
 | `threexui_node` | Узел кластера / регистрация multi-node |
 | `threexui_panel_general` | Общие настройки панели |
