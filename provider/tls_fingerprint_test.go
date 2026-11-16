@@ -1,10 +1,54 @@
 package provider
 
 import (
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
+
+func TestStoreInboundStreamWaitsForTLS(t *testing.T) {
+	const oldStream = `{"tlsSettings":{"settings":{"fingerprint":"chrome"}}}`
+	const newStream = `{"tlsSettings":{"settings":{"fingerprint":"safari"}}}`
+	var reads atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		inbound := Inbound{ID: 1, Port: 25522, StreamSettings: oldStream}
+		switch r.URL.Path {
+		case "/login":
+			w.Write(okResponse(nil))
+		case "/panel/api/inbounds/list":
+			w.Write(okResponse([]Inbound{inbound}))
+		case "/panel/api/inbounds/update/1":
+			if err := r.ParseForm(); err != nil {
+				t.Error(err)
+			}
+			if got := r.FormValue("streamSettings"); got != newStream {
+				t.Errorf("posted streamSettings = %s, want %s", got, newStream)
+			}
+			w.Write(okResponse(inbound))
+		case "/panel/api/inbounds/get/1":
+			if reads.Add(1) > 1 {
+				inbound.StreamSettings = newStream
+			}
+			w.Write(okResponse(inbound))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	t.Setenv(envEndpoint, server.URL)
+	t.Setenv(envBasePath, "/")
+
+	testAccStoreInboundStream(t, 25522, func(stream map[string]any) {
+		tls := stream["tlsSettings"].(map[string]any)
+		tls["settings"] = map[string]any{"fingerprint": "safari"}
+	})
+	if got := reads.Load(); got != 2 {
+		t.Fatalf("GET count = %d, want 2: the first read still has the old TLS fingerprint", got)
+	}
+}
 
 func TestInboundTLSFingerprintWireFormat(t *testing.T) {
 	for _, protocol := range []string{"vless", "trojan", "hysteria"} {

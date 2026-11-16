@@ -268,7 +268,8 @@ func testAccStoreInboundStream(t *testing.T, port int, edit func(map[string]any)
 	}
 	for attempt := 0; attempt < 30; attempt++ {
 		if stored, err := testAccStoredStream(client, inbound.ID); err == nil &&
-			checkStreamMasks("", stored, wantFinalMask, wantMasquerade) == nil {
+			checkStreamMasks("", stored, wantFinalMask, wantMasquerade) == nil &&
+			reflect.DeepEqual(stored["tlsSettings"], want["tlsSettings"]) {
 			return
 		}
 		time.Sleep(500 * time.Millisecond)
