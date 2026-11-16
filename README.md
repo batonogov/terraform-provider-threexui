@@ -95,7 +95,7 @@ resource "threexui_inbound_client" "client_a" {
 
 ## Compatibility
 
-**Support policy:** the provider officially supports every released patch across all supported 3x-ui minor lines — see the compatibility table below. The acceptance matrix exercises each version on every push to `main` and every pull request.
+**Support policy:** the provider officially supports every released patch across all supported 3x-ui minor lines — see the compatibility table below. The acceptance matrix tests only the latest supported patch listed in `compat-versions.json` for each minor line on every push to `main` and every pull request. Earlier patches remain supported; the table retains previously tested releases.
 
 | 3x-ui version | Status |
 | --- | --- |

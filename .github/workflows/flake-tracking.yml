@@ -25,8 +25,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - id: set
         run: |
-          MATRIX=$(jq -c '[.versions[] | select(.supported == true) | .version]' compat-versions.json)
-          VERSIONS=$(jq -r '[.versions[] | select(.supported == true) | .version] | join(" ")' compat-versions.json)
+          MATRIX=$(jq -c -f scripts/compat-matrix.jq compat-versions.json)
+          VERSIONS=$(jq -r 'join(" ")' <<< "$MATRIX")
           echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
           echo "versions=$VERSIONS" >> "$GITHUB_OUTPUT"
           echo "terraform_default=$(jq -er .default_version terraform-versions.json)" >> "$GITHUB_OUTPUT"

@@ -168,6 +168,8 @@
   `scripts/validate-examples.sh`.
 - Panel versions come from `compat-versions.json`: edit it, run
   `scripts/sync-versions.sh fix`, then `scripts/sync-versions.sh check`.
+  CI and flake tracking use `scripts/compat-matrix.jq` to test only the latest
+  supported patch per minor line; earlier patches remain supported.
   New snapshots also require `context7.json` exclusions and refreshed drift mappings
   plus `provider/testdata/upstream_contract.json` (including applicable field lists).
 - Terraform support comes from `terraform-versions.json`: latest patches of the

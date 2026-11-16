@@ -101,7 +101,7 @@ resource "threexui_inbound_client" "client_a" {
 
 ## التوافق
 
-**سياسة الدعم:** الـ provider بيدعم رسميًا كل patch متنزّل في كل سطور 3x-ui الفرعية المدعومة — شوف جدول التوافقية تحت. matrix الـ acceptance بيختبر كل نسخة في كل push على `main` و في كل pull request.
+**سياسة الدعم:** الـ provider بيدعم رسميًا كل patch متنزّل في كل سطور 3x-ui الفرعية المدعومة — شوف جدول التوافقية تحت. matrix الـ acceptance بيختبر بس آخر patch مدعوم لكل سطر فرعي موجود في `compat-versions.json` في كل push على `main` و في كل pull request. الـ patches الأقدم لسه مدعومة؛ الجدول بيحتفظ بالنسخ اللي اتختبرت قبل كده.
 
 | إصدار 3x-ui | الحالة |
 | --- | --- |
