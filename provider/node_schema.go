@@ -18,7 +18,7 @@ import (
 // NodeResourceModel is the Terraform-level typed model for threexui_node.
 // Managed attributes map to the user-editable fields of model.Node; the rest
 // are observed state populated by the central panel's heartbeat probes
-// (Computed). See .pi/m2-contract.md and 3x-ui-3.4.1/internal/database/model/model.go.
+// (Computed). See 3x-ui-3.4.1/internal/database/model/model.go.
 type NodeResourceModel struct {
 	// Managed (user-editable).
 	ID                        types.String   `tfsdk:"id"`

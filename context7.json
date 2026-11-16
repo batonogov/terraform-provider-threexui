@@ -21,7 +21,6 @@
     "3x-ui-3.10.2",
     "3x-ui-3.11.0",
     ".cache",
-    ".claude",
     ".git",
     ".pi",
     "node_modules"
