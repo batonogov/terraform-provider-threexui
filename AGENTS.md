@@ -60,7 +60,7 @@
 - `testAccStoreInboundStream` must await both masks and `tlsSettings` after API edits;
   mask-only comparisons accept stale fingerprint reads. Keep
   `TestStoreInboundStreamWaitsForTLS` guarding that delay.
-- Failure logs land in `.pi/artifacts/3xui-container.log`. Task defers run in reverse
+- Failure logs land in `artifacts/3xui-container.log`. Task defers run in reverse
   order: log capture must stay after the teardown defer so it executes first.
 - New provider behavior needs direct unit tests, not just `TestAcc*` tests:
   CI uploads **unit-only** coverage. Require green CI **and** clean Codecov patch
@@ -168,4 +168,4 @@
   panel; panel compatibility and PostgreSQL jobs use only the default Terraform.
 - Conventional commits feed Release Please/GoReleaser. Keep workflow actions pinned
   to commit SHAs and update pre-commit hooks with `pre-commit autoupdate --freeze`.
-- Put scratch output in git-ignored `.pi/artifacts/`, not the repository root.
+- Put scratch output in git-ignored `artifacts/`, not the repository root.

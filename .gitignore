@@ -67,13 +67,9 @@ terraform.rc
 # End of https://www.toptal.com/developers/gitignore/api/terraform
 
 # other
+/artifacts/
 3x-ui-*
 terraform-provider-threexui
 example2/
-.claude/
-.pi/
 .DS_Store
 .cache
-docs/superpowers/
-.pine/
-.pi-subagents/

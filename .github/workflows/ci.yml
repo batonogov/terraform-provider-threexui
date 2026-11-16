@@ -205,8 +205,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: 3xui-container-logs-acceptance-${{ matrix.terraform }}
-          path: .pi/artifacts/3xui-container.log
-          include-hidden-files: true
+          path: artifacts/3xui-container.log
           retention-days: 7
 
   acceptance-tests-postgres:
@@ -256,8 +255,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: 3xui-container-logs-postgres
-          path: .pi/artifacts/3xui-container.log
-          include-hidden-files: true
+          path: artifacts/3xui-container.log
           retention-days: 7
 
   acceptance-matrix-prepare:
@@ -328,6 +326,5 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: 3xui-container-logs-${{ matrix.version }}
-          path: .pi/artifacts/3xui-container.log
-          include-hidden-files: true
+          path: artifacts/3xui-container.log
           retention-days: 7

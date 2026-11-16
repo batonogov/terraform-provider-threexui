@@ -34,8 +34,8 @@ tasks:
       # Deferred commands run in reverse order: capture failure logs first.
       - defer: |
           {{if .EXIT_CODE}}
-          mkdir -p .pi/artifacts
-          docker compose logs 3xui > .pi/artifacts/3xui-container.log 2>&1
+          mkdir -p artifacts
+          docker compose logs 3xui > artifacts/3xui-container.log 2>&1
           {{end}}
       - docker compose up --detach --wait --quiet-pull
       - task: _set-test-credentials
@@ -65,8 +65,8 @@ tasks:
       # Deferred commands run in reverse order: capture failure logs first.
       - defer: |
           {{if .EXIT_CODE}}
-          mkdir -p .pi/artifacts
-          docker compose logs 3xui > .pi/artifacts/3xui-container.log 2>&1
+          mkdir -p artifacts
+          docker compose logs 3xui > artifacts/3xui-container.log 2>&1
           {{end}}
       - docker compose up --detach --wait --quiet-pull
       - task: _set-test-credentials
@@ -95,8 +95,8 @@ tasks:
       # Deferred commands run in reverse order: capture failure logs first.
       - defer: |
           {{if .EXIT_CODE}}
-          mkdir -p .pi/artifacts
-          docker compose --profile postgres logs > .pi/artifacts/3xui-container.log 2>&1
+          mkdir -p artifacts
+          docker compose --profile postgres logs > artifacts/3xui-container.log 2>&1
           {{end}}
       - XUI_DB_TYPE=postgres XUI_DB_DSN=postgres://xui:xui@postgres:5432/xui?sslmode=disable docker compose --profile postgres up --detach --wait --quiet-pull
       - task: _set-test-credentials
