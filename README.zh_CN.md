@@ -36,6 +36,8 @@
 
 ## 快速开始
 
+请将示例中的 `admin`/`admin` 替换为面板的实际凭据。全新安装的 3x-ui v3.11.0+ 会随机生成首个用户的凭据；请从首次启动日志中获取，或通过 `x-ui setting -username <user> -password <pass>` 显式设置。
+
 ```hcl
 terraform {
   required_providers {

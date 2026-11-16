@@ -99,6 +99,8 @@ resource "threexui_panel_user" "admin" {
 
 Fresh 3x-ui v3.11.0+ panels generate random first-user credentials, not `admin`/`admin`. Supply those initial credentials from the first-start log, or set explicit ones with `x-ui setting -username <user> -password <pass>`. Declare password input variables as `sensitive = true`. See the [panel-user example](https://github.com/batonogov/terraform-provider-threexui/tree/main/examples/panel-user) for the complete configuration.
 
+Before each later rotation, set `bootstrap_username` and `bootstrap_password` to the panel's currently active credentials, then change the desired steady-state values. The provider must authenticate before the resource can update credentials; the original installation credentials no longer work after the first rotation.
+
 3x-ui v3 protects login and unsafe API requests with CSRF tokens. The provider fetches and refreshes those tokens automatically; no additional configuration is required.
 
 -> **Note:** The provider has **partial** 2FA support. You can supply a TOTP code via the `two_factor_code` attribute, and it will be sent with the initial login request. However, TOTP codes expire every 30 seconds. Because the provider performs automatic re-login when the session expires (on HTTP 401/404), subsequent logins will fail once the original code is no longer valid. For short-lived operations (a single `terraform apply`) this may work, but long-running or repeated runs will require a fresh code each time.

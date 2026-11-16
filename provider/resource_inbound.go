@@ -213,7 +213,7 @@ func (r *InboundResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			},
 			"protocol": schema.StringAttribute{
 				Required:    true,
-				Description: "Protocol (vless, vmess, trojan, shadowsocks, http, mixed, wireguard, amneziawg, tunnel, tun, hysteria, mtproto). socks and dokodemo-door are deprecated since 3x-ui v3.2.0 — use mixed and tunnel instead. tun is an alias for tunnel available since 3x-ui v3.2.7; mtproto is available since v3.3.0; amneziawg since v3.7.0.",
+				Description: "Protocol (vless, vmess, trojan, shadowsocks, http, mixed, wireguard, amneziawg, tunnel, tun, hysteria, mtproto, tuic). socks and dokodemo-door are deprecated since 3x-ui v3.2.0 — use mixed and tunnel instead. tun is an alias for tunnel available since 3x-ui v3.2.7; mtproto is available since v3.3.0; amneziawg since v3.7.0; tuic since v3.8.0.",
 				Validators:  protocolValidators(),
 			},
 			"tag": schema.StringAttribute{

@@ -36,6 +36,8 @@ Operar 3x-ui en producción significa decenas de inbounds, cientos de clientes y
 
 ## Inicio rápido
 
+Sustituye las credenciales de ejemplo `admin`/`admin` por las reales de tu panel. Las instalaciones nuevas de 3x-ui v3.11.0+ generan credenciales aleatorias para el primer usuario; consúltalas en el registro del primer arranque o configúralas con `x-ui setting -username <user> -password <pass>`.
+
 ```hcl
 terraform {
   required_providers {

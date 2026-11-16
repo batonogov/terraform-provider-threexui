@@ -36,6 +36,8 @@
 
 ## Hızlı Başlangıç
 
+Örnekteki `admin`/`admin` bilgilerini panelinizin gerçek giriş bilgileriyle değiştirin. Yeni 3x-ui v3.11.0+ kurulumları ilk kullanıcı için rastgele giriş bilgileri üretir; bunları ilk başlatma günlüğünden alın veya `x-ui setting -username <user> -password <pass>` komutuyla açıkça belirleyin.
+
 ```hcl
 terraform {
   required_providers {

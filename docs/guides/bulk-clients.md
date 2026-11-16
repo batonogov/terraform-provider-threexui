@@ -153,7 +153,7 @@ Each team's section is small, focused, and reviewable independently.
 
 ## Performance notes
 
-- Client writes are serialized via a process-wide mutex, including writes to different inbounds and provider aliases. Splitting clients across inbounds or modules does not parallelize these writes.
+- Client writes within one provider process are serialized across inbounds. Modules sharing a provider configuration do not parallelize these writes. Separate provider processes do not share this lock; avoid concurrently managing the same panel through separate aliases or Terraform runs.
 - The provider retries transient HTTP 5xx on idempotent writes (default `max_retries = 1`). Bumping it to `2`–`3` helps on flaky networks.
 
 ## What not to do

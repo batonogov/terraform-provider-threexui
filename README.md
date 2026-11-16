@@ -36,6 +36,8 @@ Running 3x-ui in production means dozens of inbounds, hundreds of clients, and X
 
 ## Quick Start
 
+Replace the sample `admin`/`admin` credentials with your panel's actual credentials. Fresh 3x-ui v3.11.0+ panels generate random first-user credentials; read them from the first-start log or set explicit ones with `x-ui setting -username <user> -password <pass>`.
+
 ```hcl
 terraform {
   required_providers {

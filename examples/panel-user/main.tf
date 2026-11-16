@@ -13,12 +13,12 @@ variable "panel_password" {
 }
 
 variable "bootstrap_username" {
-  description = "Initial panel username; fresh v3.11.0+ panels generate random credentials."
+  description = "Currently active panel username; fresh v3.11.0+ panels generate random credentials."
   type        = string
 }
 
 variable "bootstrap_password" {
-  description = "Initial panel password from the first-start log or an explicit x-ui setting."
+  description = "Currently active panel password; update this before each later password rotation."
   type        = string
   sensitive   = true
 }
@@ -32,8 +32,8 @@ provider "threexui" {
   bootstrap_password = var.bootstrap_password
 }
 
-# Bootstrap credentials allow the first rotation; steady-state credentials
-# keep subsequent runs authenticated.
+# Before each later rotation, set bootstrap credentials to the currently active
+# credentials, then change panel_password. Authentication happens before updates.
 resource "threexui_panel_user" "admin" {
   username = "admin"
   password = var.panel_password
