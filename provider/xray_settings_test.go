@@ -1781,6 +1781,12 @@ func TestBuildXrayOutboundsJSON_StreamSettings(t *testing.T) {
 	if tls["serverName"] != "gcp.aistreams.cloud" {
 		t.Fatalf("expected serverName, got %v", tls["serverName"])
 	}
+	if tls["fingerprint"] != "chrome" {
+		t.Fatalf("outbound fingerprint must stay at the TLS root, got %#v", tls)
+	}
+	if _, ok := tls["settings"]; ok {
+		t.Fatal("outbound must not carry panel-only TLS client settings")
+	}
 
 	// The round-trip back into the snake_case map must preserve the block.
 	flat := flattenXrayOutboundsToMap(wire)
@@ -1797,6 +1803,9 @@ func TestBuildXrayOutboundsJSON_StreamSettings(t *testing.T) {
 	ts := tlsOut[0].(map[string]any)
 	if ts["server_name"] != "gcp.aistreams.cloud" {
 		t.Fatalf("expected server_name after round-trip, got %v", ts["server_name"])
+	}
+	if ts["fingerprint"] != "chrome" {
+		t.Fatalf("expected fingerprint after round-trip, got %v", ts["fingerprint"])
 	}
 }
 

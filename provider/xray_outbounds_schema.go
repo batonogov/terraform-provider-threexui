@@ -779,8 +779,8 @@ func expandOutboundMux(list []any) map[string]any {
 }
 
 // expandOutboundStreamSettings converts the snake_case stream settings map into
-// the camelCase object that xray stores on an outbound, reusing the exact
-// encoding the inbound resources send as a JSON string. Returns nil when the
+// the camelCase object that xray stores on an outbound, lifting panel-only TLS
+// client settings to the Xray TLS root. Returns nil when the
 // map carries nothing to emit.
 func expandOutboundStreamSettings(ss map[string]any) map[string]any {
 	if len(ss) == 0 {
@@ -796,6 +796,12 @@ func expandOutboundStreamSettings(ss map[string]any) map[string]any {
 	}
 	if len(obj) == 0 {
 		return nil
+	}
+	if tls, ok := obj["tlsSettings"].(map[string]any); ok {
+		if settings, ok := tls["settings"].(map[string]any); ok {
+			tls["fingerprint"] = settings["fingerprint"]
+			delete(tls, "settings")
+		}
 	}
 	return obj
 }

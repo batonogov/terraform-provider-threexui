@@ -671,7 +671,7 @@ Unlike AmneziaWG, the panel generates nothing here: the `certificate` / `private
 
 - `tls_settings` (Optional, Block) - TLS settings (used when `security = "tls"`).
   - `server_name` (Optional, String) - Server name (SNI) for the TLS handshake.
-  - `fingerprint` (Optional, String) - Client fingerprint (e.g. `chrome`, `firefox`).
+  - `fingerprint` (Optional, String) - Client uTLS fingerprint (e.g. `chrome`, `firefox`) advertised through panel-generated links and subscriptions. Stored in the panel's `tlsSettings.settings.fingerprint`; it does not change the server's TLS handshake. Hysteria2 uses QUIC TLS, not uTLS, so storing a fingerprint does not enable browser impersonation for Hysteria2.
   - `use_system_ca` (Optional, Boolean) - Use the system CA store for outbound TLS (shared schema, 3x-ui v3.10.0+).
   - `allow_insecure` (Optional, Boolean) - Whether to allow insecure TLS connections.
   - `alpn` (Optional, List of String) - ALPN list (e.g. `["h2", "http/1.1"]`).
@@ -689,6 +689,10 @@ Unlike AmneziaWG, the panel generates nothing here: the `certificate` / `private
     - `usage` (Optional, String) - `encipherment`, `verify`, or `issue`.
 
   ~> **Note** `certificates` is a nested *attribute*, not a block — use the assignment syntax: `certificates = [{ certificate = [...], key = [...] }]`.
+
+  Inbounds written by older provider versions may still have a top-level TLS
+  fingerprint that the panel ignores. The next resource update migrates it to the
+  panel's layout. If the plan is empty, change `remark` once to trigger that update.
 
 - `external_proxy` (Optional, Block List) - External proxy entries.
   - `dest` (Optional, String)

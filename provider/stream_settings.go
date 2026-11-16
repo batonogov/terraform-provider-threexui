@@ -430,7 +430,8 @@ func expandTLSSettings(list []any) map[string]any {
 		out["serverName"] = v
 	}
 	if v, ok := item["fingerprint"].(string); ok && v != "" {
-		out["fingerprint"] = v
+		// The panel reads inbound client directives from tlsSettings.settings.
+		out["settings"] = map[string]any{"fingerprint": v}
 	}
 	if v, ok := item["use_system_ca"]; ok {
 		out["useSystemCA"] = boolValue(v)
@@ -550,6 +551,12 @@ func flattenTLSSettings(in map[string]any) map[string]any {
 	}
 	if v, ok := in["fingerprint"].(string); ok {
 		out["fingerprint"] = v
+	}
+	// Prefer the panel layout over legacy provider JSON and outbound TLS fields.
+	if settings, ok := in["settings"].(map[string]any); ok {
+		if v, ok := settings["fingerprint"].(string); ok {
+			out["fingerprint"] = v
+		}
 	}
 	if v, ok := in["useSystemCA"].(bool); ok {
 		out["use_system_ca"] = v
