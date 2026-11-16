@@ -10,8 +10,9 @@
   `Taskfile.yml` and `.github/workflows/ci.yml` define the actual verification commands.
 - Before changing API behavior, inspect the matching `3x-ui-<version>/` snapshot:
   `internal/web/{controller,service,entity}/`, `internal/database/model/`,
-  `frontend/src/schemas/`, and `xray/`. Snapshots through v3.3.x use the older
-  `web/` and `database/` layout. These are upstream reference sources, not provider code.
+  `frontend/src/schemas/`, and `internal/xray/`. Look under `internal/` first,
+  then the legacy root `web/`, `database/`, and `xray/` paths.
+  These are upstream reference sources, not provider code.
 - `provider/drift_test.go` checks upstream contracts against snapshots, falling back to
   committed `provider/testdata/upstream_contract.json` when snapshots are absent.
   Feature limitations belong in `docs/guides/version-compatibility.md`, not a release log here.
