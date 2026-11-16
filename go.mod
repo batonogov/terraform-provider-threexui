@@ -1,6 +1,6 @@
 module github.com/batonogov/terraform-provider-threexui
 
-go 1.26.10
+go 1.26.11
 
 require (
 	github.com/hashicorp/go-version v1.9.0
