@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -269,5 +270,129 @@ func TestInboundClientRecordExtrasLegacyAPI(t *testing.T) {
 	}
 	if m.LimitHwid.ValueInt64() != 0 || len(m.ExternalLink.Elements()) != 0 {
 		t.Fatalf("legacy defaults changed: %d / %d links", m.LimitHwid.ValueInt64(), len(m.ExternalLink.Elements()))
+	}
+}
+
+func TestClientGetClientRecordValidation(t *testing.T) {
+	client := newTestClient(t, "http://unused.invalid")
+	if _, err := client.GetClientRecord(context.Background(), ""); err == nil {
+		t.Fatal("empty email must be rejected")
+	}
+}
+
+func TestClientGetClientRecordHTTPNotFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	client := newTestClient(t, srv.URL)
+	rec, err := client.GetClientRecord(context.Background(), "a@b")
+	if err != nil || rec != nil {
+		t.Fatalf("404 must map to (nil, nil), got %v / %v", rec, err)
+	}
+}
+
+func TestClientGetClientRecordError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"success":false,"msg":"database locked","obj":null}`))
+	}))
+	defer srv.Close()
+
+	client := newTestClient(t, srv.URL)
+	if _, err := client.GetClientRecord(context.Background(), "a@b"); err == nil || !strings.Contains(err.Error(), "database locked") {
+		t.Fatalf("expected panel error to propagate, got %v", err)
+	}
+}
+
+func TestClientSetClientExternalLinksValidation(t *testing.T) {
+	client := newTestClient(t, "http://unused.invalid")
+	if err := client.SetClientExternalLinks(context.Background(), "", nil); err == nil {
+		t.Fatal("empty email must be rejected")
+	}
+}
+
+// TestClientAPITokenProbeErrorBranches walks the probe's failure modes so a
+// broken token never passes configuration silently.
+func TestClientAPITokenProbeErrorBranches(t *testing.T) {
+	cases := []struct {
+		name    string
+		handler http.HandlerFunc
+		want    string
+	}{
+		{"http 500", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusInternalServerError) }, "status 500"},
+		{"envelope failure", func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte(`{"success":false,"msg":"token scope too narrow"}`))
+		}, "token scope too narrow"},
+		{"envelope failure without message", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(`{"success":false}`)) }, "API token request failed"},
+		{"non-JSON body", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("not json")) }, "invalid character"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(tc.handler)
+			defer srv.Close()
+			client := newTestClientWithToken(t, srv.URL, "tok")
+			err := client.Login(context.Background())
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("expected %q in error, got %v", tc.want, err)
+			}
+		})
+	}
+}
+
+func TestClientAPITokenProbeNetworkError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	endpoint := srv.URL
+	srv.Close() // connection refused on every request
+
+	client := newTestClientWithToken(t, endpoint, "tok")
+	if err := client.Login(context.Background()); err == nil {
+		t.Fatal("unreachable panel must fail the probe")
+	}
+}
+
+func TestInboundClientRecordExtrasRecordGone(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"success":false,"msg":"record not found","obj":null}`))
+	}))
+	defer srv.Close()
+
+	client := newTestClient(t, srv.URL)
+	newAPI := true
+	client.newClientAPI = &newAPI
+	r := &InboundClientResource{client: client}
+	m := inboundClientToModel(1, "uuid", map[string]any{"email": "a@b"})
+
+	if err := r.readClientRecordExtras(context.Background(), m, "a@b"); err != nil {
+		t.Fatalf("missing record must keep defaults, got %v", err)
+	}
+	if m.LimitHwid.ValueInt64() != 0 || len(m.ExternalLink.Elements()) != 0 {
+		t.Fatal("defaults changed for a missing record")
+	}
+}
+
+// TestExpandClientExternalLinksSkipsNonObjects covers the defensive branch for
+// malformed list elements; the framework only produces objects here.
+func TestExpandClientExternalLinksSkipsNonObjects(t *testing.T) {
+	list := types.ListValueMust(types.StringType, []attr.Value{types.StringValue("not-an-object")})
+	if got := expandClientExternalLinks(list); len(got) != 0 {
+		t.Fatalf("non-object elements must be skipped, got %+v", got)
+	}
+}
+
+func TestInboundClientRecordExtrasError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"success":false,"msg":"database locked","obj":null}`))
+	}))
+	defer srv.Close()
+
+	client := newTestClient(t, srv.URL)
+	newAPI := true
+	client.newClientAPI = &newAPI
+	r := &InboundClientResource{client: client}
+	m := inboundClientToModel(1, "uuid", map[string]any{"email": "a@b"})
+
+	if err := r.readClientRecordExtras(context.Background(), m, "a@b"); err == nil {
+		t.Fatal("record read errors must propagate, not silently drop to defaults")
 	}
 }
