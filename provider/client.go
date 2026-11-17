@@ -48,7 +48,7 @@ type ClientConfig struct {
 	Password      string
 	TwoFactorCode string
 	// ApiToken authenticates every /panel/api/* request with an
-	// Authorization: Bearer header instead of a session login (3x-ui v3.9.0+,
+	// Authorization: Bearer header instead of a session login (3x-ui v3.3.0+,
 	// Settings → API tokens). It needs an admin-scope token; monitor and
 	// node-sync scopes only expose status routes. When set, username/password
 	// and 2FA are ignored.
@@ -288,11 +288,11 @@ func (c *Client) loginLocked(ctx context.Context) error {
 	if c.apiToken != "" {
 		// Bearer auth needs no session or CSRF token; verify the token once
 		// against a real API route so a bad/disabled token or a panel without
-		// API-token support (pre-v3.9.0) fails at provider configuration
+		// API-token support fails at provider configuration
 		// instead of at the first resource call. Raw request, not doRequest:
 		// doRequest's 401 re-login path would recurse into this lock.
 		if err := c.probeAPITokenLocked(ctx); err != nil {
-			return fmt.Errorf("API token authentication failed (requires 3x-ui v3.9.0+ and an admin-scope token): %w", err)
+			return fmt.Errorf("API token authentication failed (check the token, its admin scope, and the panel base path): %w", err)
 		}
 		return nil
 	}
@@ -1094,7 +1094,7 @@ func (c *Client) DeleteInboundClient(ctx context.Context, inboundID int, clientI
 }
 
 // ClientExternalLink is one row of a client's external links (the Links tab of
-// the client form; 3x-ui v3.9.0+). Kind "link" must be a share link the panel's
+// the client form; 3x-ui v3.4.0+). Kind "link" must be a share link the panel's
 // link parser accepts; "subscription" must be an http(s) URL. Enable defaults
 // to true server-side when omitted.
 type ClientExternalLink struct {
@@ -1135,7 +1135,7 @@ func (c *Client) GetClientRecord(ctx context.Context, email string) (*clientReco
 }
 
 // SetClientExternalLinks replaces the client's full external-links list (POST
-// /panel/api/clients/:email/externalLinks, 3x-ui v3.9.0+). The endpoint is
+// /panel/api/clients/:email/externalLinks, 3x-ui v3.4.0+). The endpoint is
 // replace-all, so the operation is idempotent and safe to retry.
 func (c *Client) SetClientExternalLinks(ctx context.Context, email string, links []ClientExternalLink) error {
 	if email == "" {

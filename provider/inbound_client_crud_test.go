@@ -16,9 +16,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 )
 
-// fakeClientPanel models the v3.9.0+ routes the inbound_client resource uses
-// for the limit_hwid / external_link lifecycle: dedicated client CRUD, the
-// client record read and the replace-all external-links endpoint.
+// fakeClientPanel models the dedicated client routes the inbound_client
+// resource uses for the limit_hwid / external_link lifecycle: client CRUD,
+// the client record read and the replace-all external-links endpoint.
 type fakeClientPanel struct {
 	mu                sync.Mutex
 	clients           []map[string]any
@@ -306,8 +306,8 @@ func TestInboundClientUpdateClearsExternalLinks(t *testing.T) {
 // TestInboundClientUpdateOmitsExternalLinksPreserves is the regression test for
 // the review blocker: with the attribute omitted from config, the plan carries
 // the state-derived list (Optional+Computed + UseStateForUnknown). The update
-// must NOT POST it back — that 404s on pre-v3.9.0 panels and clobbers
-// concurrent panel edits on v3.9.0+.
+// must NOT POST it back — that 404s on pre-v3.4.0 panels and clobbers
+// concurrent panel edits on v3.4.0+.
 func TestInboundClientUpdateOmitsExternalLinksPreserves(t *testing.T) {
 	enable := true
 	panel := &fakeClientPanel{

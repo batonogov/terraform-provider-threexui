@@ -334,7 +334,7 @@ func (r *InboundClientResource) Schema(_ context.Context, _ resource.SchemaReque
 				Computed: true,
 				Description: "Maximum number of distinct device IDs (HWIDs) this client may connect from; the panel enforces it on subscription-linked " +
 					"connections and 0 disables the limit. Stored in the dedicated client tables, so it only round-trips through this resource, " +
-					"not through threexui_inbound. 3x-ui v3.9.0+; older panels ignore the attribute and report 0 (unsupported).",
+					"not through threexui_inbound. 3x-ui v3.7.0+; older panels ignore the attribute and report 0 (unsupported).",
 				Validators: []validator.Int64{
 					int64validator.AtLeast(0),
 				},
@@ -349,7 +349,7 @@ func (r *InboundClientResource) Schema(_ context.Context, _ resource.SchemaReque
 				// access tokens, so the whole list is redacted from CLI output.
 				Sensitive: true,
 				Description: "External links attached to this client (the Links tab of the client form; the panel merges their outbounds into the " +
-					"client's subscription). Omit to preserve the panel's list; set [] to clear it. Requires 3x-ui v3.9.0+. " +
+					"client's subscription). Omit to preserve the panel's list; set [] to clear it. Requires 3x-ui v3.4.0+. " +
 					"Stored in the dedicated client tables, so it only round-trips through this resource, not through threexui_inbound.",
 				PlanModifiers: []planmodifier.List{
 					listplanmodifier.UseStateForUnknown(),
@@ -600,8 +600,8 @@ func (r *InboundClientResource) Create(ctx context.Context, req resource.CreateR
 	// External links are replace-all on a dedicated endpoint. Gate on the
 	// CONFIG, not the plan: with the attribute omitted the plan carries the
 	// prior state list (Optional+Computed + UseStateForUnknown), which would
-	// otherwise POST on every unrelated update — a 404 on pre-v3.9.0 panels
-	// and a clobbered concurrent panel edit on v3.9.0+.
+	// otherwise POST on every unrelated update — a 404 on pre-v3.4.0 panels
+	// and a clobbered concurrent panel edit on v3.4.0+.
 	if !config.ExternalLink.IsNull() && !config.ExternalLink.IsUnknown() {
 		if err := r.client.SetClientExternalLinks(ctx, plan.Email.ValueString(), expandClientExternalLinks(config.ExternalLink)); err != nil {
 			resp.Diagnostics.AddError("Failed to set client external links", err.Error())
@@ -842,7 +842,7 @@ func (r *InboundClientResource) readClientStateWithRetry(ctx context.Context, in
 }
 
 // readClientRecordExtras fills limit_hwid and external_link from the dedicated
-// client record API: both live in the client tables (3x-ui v3.9.0+), not in the
+// client record API: both live in the dedicated client tables, not in the
 // inbound settings JSON the rest of the state comes from. Pre-v3.1.0 panels
 // have no such API, so the settings-only defaults stay in place there.
 func (r *InboundClientResource) readClientRecordExtras(ctx context.Context, m *InboundClientResourceModel, email string) error {
