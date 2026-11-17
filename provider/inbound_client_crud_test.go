@@ -10,7 +10,9 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	resourceschema "github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 )
 
@@ -165,6 +167,41 @@ func TestInboundClientCreateWithExternalLinks(t *testing.T) {
 	}
 }
 
+func TestInboundClientExternalLinkWhitespaceValidators(t *testing.T) {
+	s := inboundClientTestSchema(t)
+	linkAttr, ok := s.Attributes["external_link"].(resourceschema.ListNestedAttribute)
+	if !ok {
+		t.Fatal("external_link attribute missing")
+	}
+
+	cases := []struct {
+		attr  string
+		value string
+		valid bool
+	}{
+		{"value", "https://example.com/sub", true},
+		{"value", "vless://uuid@host:443#name", true},
+		{"value", " https://padded ", false},
+		{"value", "   ", false},
+		{"value", "", false},
+		{"remark", "ok", true},
+		{"remark", "two words", true},
+		{"remark", "", true},
+		{"remark", " leading", false},
+		{"remark", "trailing ", false},
+	}
+	for _, tc := range cases {
+		attr := linkAttr.NestedObject.Attributes[tc.attr].(resourceschema.StringAttribute)
+		for _, v := range attr.Validators {
+			resp := &validator.StringResponse{}
+			v.ValidateString(context.Background(), validator.StringRequest{ConfigValue: types.StringValue(tc.value)}, resp)
+			if got := !resp.Diagnostics.HasError(); got != tc.valid {
+				t.Errorf("%s = %q: valid = %v, want %v", tc.attr, tc.value, got, tc.valid)
+			}
+		}
+	}
+}
+
 func TestInboundClientReadMergesRecord(t *testing.T) {
 	panel := &fakeClientPanel{
 		clients:   []map[string]any{{"id": "uuid-1", "email": "a@b"}},
@@ -263,5 +300,64 @@ func TestInboundClientUpdateClearsExternalLinks(t *testing.T) {
 	}
 	if len(state.ExternalLink.Elements()) != 0 {
 		t.Fatalf("expected cleared links in state, got %d", len(state.ExternalLink.Elements()))
+	}
+}
+
+// TestInboundClientUpdateOmitsExternalLinksPreserves is the regression test for
+// the review blocker: with the attribute omitted from config, the plan carries
+// the state-derived list (Optional+Computed + UseStateForUnknown). The update
+// must NOT POST it back — that 404s on pre-v3.9.0 panels and clobbers
+// concurrent panel edits on v3.9.0+.
+func TestInboundClientUpdateOmitsExternalLinksPreserves(t *testing.T) {
+	enable := true
+	panel := &fakeClientPanel{
+		clients:   []map[string]any{{"id": "uuid-1", "email": "a@b"}},
+		limitHwid: 3,
+		externalLinks: []ClientExternalLink{
+			{Kind: "link", Value: "vless://uuid@host:443#name", Enable: &enable},
+		},
+	}
+	srv := httptest.NewServer(panel)
+	defer srv.Close()
+
+	s := inboundClientTestSchema(t)
+	values := map[string]tftypes.Value{
+		"id":         tftypes.NewValue(tftypes.String, "9:uuid-1"),
+		"inbound_id": tftypes.NewValue(tftypes.Number, 9),
+		"client_id":  tftypes.NewValue(tftypes.String, "uuid-1"),
+		"email":      tftypes.NewValue(tftypes.String, "a@b"),
+		"limit_hwid": tftypes.NewValue(tftypes.Number, 3),
+		"comment":    tftypes.NewValue(tftypes.String, "unrelated edit"),
+	}
+	// external_link absent: null in config, and (as the framework would plan
+	// it) the prior list in state/plan raw values.
+	withLinks := map[string]tftypes.Value{}
+	for k, v := range values {
+		withLinks[k] = v
+	}
+	withLinks["external_link"] = externalLinkListValue(t, s, []map[string]tftypes.Value{{
+		"value": tftypes.NewValue(tftypes.String, "vless://uuid@host:443#name"),
+	}})
+
+	r := &InboundClientResource{client: newTestClient(t, srv.URL)}
+	resp := resource.UpdateResponse{State: tfsdk.State{Schema: s}}
+	r.Update(context.Background(), resource.UpdateRequest{
+		Plan:   tfsdk.Plan{Schema: s, Raw: rawFromAttributes(t, s, withLinks)},
+		State:  tfsdk.State{Schema: s, Raw: rawFromAttributes(t, s, withLinks)},
+		Config: tfsdk.Config{Schema: s, Raw: rawFromAttributes(t, s, values)}, // omitted in config
+	}, &resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("update diagnostics: %v", resp.Diagnostics)
+	}
+	if panel.externalLinkPosts != 0 {
+		t.Fatalf("omitted external_link must not POST, got %d posts", panel.externalLinkPosts)
+	}
+
+	var state InboundClientResourceModel
+	if diags := resp.State.Get(context.Background(), &state); diags.HasError() {
+		t.Fatalf("decoding state: %v", diags)
+	}
+	if len(state.ExternalLink.Elements()) != 1 {
+		t.Fatalf("panel list must be preserved in state, got %d", len(state.ExternalLink.Elements()))
 	}
 }

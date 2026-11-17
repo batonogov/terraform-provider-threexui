@@ -335,6 +335,9 @@ func (r *InboundClientResource) Schema(_ context.Context, _ resource.SchemaReque
 				Description: "Maximum number of distinct device IDs (HWIDs) this client may connect from; the panel enforces it on subscription-linked " +
 					"connections and 0 disables the limit. Stored in the dedicated client tables, so it only round-trips through this resource, " +
 					"not through threexui_inbound. 3x-ui v3.9.0+; older panels ignore the attribute and report 0 (unsupported).",
+				Validators: []validator.Int64{
+					int64validator.AtLeast(0),
+				},
 				PlanModifiers: []planmodifier.Int64{
 					int64planmodifier.UseStateForUnknown(),
 				},
@@ -342,6 +345,9 @@ func (r *InboundClientResource) Schema(_ context.Context, _ resource.SchemaReque
 			"external_link": schema.ListNestedAttribute{
 				Optional: true,
 				Computed: true,
+				// Share links embed UUIDs/passwords and subscription URLs can carry
+				// access tokens, so the whole list is redacted from CLI output.
+				Sensitive: true,
 				Description: "External links attached to this client (the Links tab of the client form; the panel merges their outbounds into the " +
 					"client's subscription). Omit to preserve the panel's list; set [] to clear it. Requires 3x-ui v3.9.0+. " +
 					"Stored in the dedicated client tables, so it only round-trips through this resource, not through threexui_inbound.",
@@ -362,15 +368,20 @@ func (r *InboundClientResource) Schema(_ context.Context, _ resource.SchemaReque
 						},
 						"value": schema.StringAttribute{
 							Required:    true,
-							Description: "Share link (kind = \"link\") or http(s) subscription URL (kind = \"subscription\"). Blank values are silently dropped by the panel, so they are rejected here.",
+							Description: "Share link (kind = \"link\") or http(s) subscription URL (kind = \"subscription\"). Must not contain whitespace: the panel drops blank values and trims padding, so anything else would not round-trip.",
 							Validators: []validator.String{
-								stringvalidator.LengthAtLeast(1),
+								stringvalidator.RegexMatches(regexp.MustCompile(`^\S+$`),
+									"value must not be blank or contain whitespace (the panel drops blank values and trims padding, which would not round-trip)"),
 							},
 						},
 						"remark": schema.StringAttribute{
 							Optional:    true,
 							Computed:    true,
-							Description: "Optional display remark.",
+							Description: "Optional display remark. Leading/trailing whitespace is rejected because the panel trims it.",
+							Validators: []validator.String{
+								stringvalidator.RegexMatches(regexp.MustCompile(`^$|^\S(.*\S)?$`),
+									"remark must not have leading or trailing whitespace (the panel trims it, which would not round-trip)"),
+							},
 						},
 						"enable": schema.BoolAttribute{
 							Optional:    true,
@@ -586,10 +597,13 @@ func (r *InboundClientResource) Create(ctx context.Context, req resource.CreateR
 		}
 	}
 
-	// External links are replace-all on a dedicated endpoint; an omitted
-	// attribute preserves the panel's list (empty for a fresh client).
-	if !plan.ExternalLink.IsNull() && !plan.ExternalLink.IsUnknown() {
-		if err := r.client.SetClientExternalLinks(ctx, plan.Email.ValueString(), expandClientExternalLinks(plan.ExternalLink)); err != nil {
+	// External links are replace-all on a dedicated endpoint. Gate on the
+	// CONFIG, not the plan: with the attribute omitted the plan carries the
+	// prior state list (Optional+Computed + UseStateForUnknown), which would
+	// otherwise POST on every unrelated update — a 404 on pre-v3.9.0 panels
+	// and a clobbered concurrent panel edit on v3.9.0+.
+	if !config.ExternalLink.IsNull() && !config.ExternalLink.IsUnknown() {
+		if err := r.client.SetClientExternalLinks(ctx, plan.Email.ValueString(), expandClientExternalLinks(config.ExternalLink)); err != nil {
 			resp.Diagnostics.AddError("Failed to set client external links", err.Error())
 			return
 		}
@@ -681,9 +695,10 @@ func (r *InboundClientResource) Update(ctx context.Context, req resource.UpdateR
 	}
 
 	// Replace-all endpoint; the client record lives at the new email after a
-	// rename, and an omitted attribute preserves the panel's list.
-	if !plan.ExternalLink.IsNull() && !plan.ExternalLink.IsUnknown() {
-		if err := r.client.SetClientExternalLinks(ctx, plan.Email.ValueString(), expandClientExternalLinks(plan.ExternalLink)); err != nil {
+	// rename. Gate on the CONFIG (see Create): an omitted attribute must not
+	// POST the state-derived list back on unrelated updates.
+	if !config.ExternalLink.IsNull() && !config.ExternalLink.IsUnknown() {
+		if err := r.client.SetClientExternalLinks(ctx, plan.Email.ValueString(), expandClientExternalLinks(config.ExternalLink)); err != nil {
 			resp.Diagnostics.AddError("Failed to set client external links", err.Error())
 			return
 		}
@@ -919,7 +934,7 @@ func expandInboundClientFromModel(m *InboundClientResourceModel) map[string]any 
 		client["clientHostRuleIds"] = typesListInt64ToAnySlice(m.ClientHostRuleIDs)
 	}
 	if !m.LimitHwid.IsNull() && !m.LimitHwid.IsUnknown() {
-		client["limitHwid"] = int(m.LimitHwid.ValueInt64())
+		client["limitHwid"] = m.LimitHwid.ValueInt64()
 	}
 	if !m.Secret.IsNull() && !m.Secret.IsUnknown() {
 		client["secret"] = m.Secret.ValueString()

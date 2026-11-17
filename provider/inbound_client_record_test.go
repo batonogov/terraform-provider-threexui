@@ -186,7 +186,7 @@ func TestClientSetClientExternalLinksEmptyClears(t *testing.T) {
 func TestInboundClientLimitHwidExpand(t *testing.T) {
 	m := &InboundClientResourceModel{LimitHwid: types.Int64Value(5)}
 	client := expandInboundClientFromModel(m)
-	if got, ok := client["limitHwid"].(int); !ok || got != 5 {
+	if got, ok := client["limitHwid"].(int64); !ok || got != 5 {
 		t.Fatalf("expected limitHwid 5 in payload, got %v", client["limitHwid"])
 	}
 
