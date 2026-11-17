@@ -33,7 +33,7 @@ The 3x-ui panel issues and stores secrets that this provider reads and writes. T
 
 | Surface | Sensitive fields |
 | --- | --- |
-| Provider config | `password`, `bootstrap_password`, `two_factor_code` |
+| Provider config | `password`, `bootstrap_password`, `two_factor_code`, `api_token` |
 | `threexui_inbound` (`stream_settings.reality_settings`) | `private_key`, `short_ids`, `mldsa65_seed` |
 | `threexui_inbound` (`wireguard_settings`) | `secret_key`, peer `private_key`/`pre_shared_key`, multi-client `clients[].private_key`/`clients[].pre_shared_key` (3x-ui v3.4.2+) |
 | `threexui_inbound` (`amneziawg_settings`) | `server.private_key`, `server.header_protection_key`, `clients[].private_key`/`clients[].pre_shared_key` (3x-ui v3.7.0+) |

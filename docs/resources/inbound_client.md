@@ -69,6 +69,30 @@ resource "threexui_inbound_client" "hysteria_user" {
 }
 ```
 
+### External links and device limits (3x-ui v3.9.0+)
+
+```hcl
+resource "threexui_inbound_client" "user1" {
+  inbound_id = threexui_inbound.vless.id
+  email      = "user1@example.com"
+  enable     = true
+
+  limit_hwid = 3 # at most 3 distinct devices
+
+  external_link {
+    kind   = "subscription"
+    value  = "https://example.com/extra-outbounds"
+    remark = "extra nodes merged into this client's subscription"
+  }
+
+  external_link {
+    value = "vless://uuid@edge.example.com:443?type=tcp#edge"
+  }
+}
+```
+
+Omit `external_link` to leave the panel's list untouched; set it to `[]` to clear all entries.
+
 ## Argument Reference
 
 - `inbound_id` (Required, Number, ForceNew) - The ID of the inbound this client belongs to. Changing this forces a new resource.
@@ -95,6 +119,8 @@ resource "threexui_inbound_client" "hysteria_user" {
 - `traffic_reset` (Optional, String) - Per-client traffic reset cycle, independent of the inbound's own cycle: `never`, `hourly`, `daily`, `weekly`, or `monthly`. Added in 3x-ui v3.7.0; older panels report an empty value (unsupported).
 - `traffic_reset_day` (Optional, Number) - Day of month (1-31) for this client's monthly traffic resets. Only effective when `traffic_reset = "monthly"`. Added in 3x-ui v3.7.0; older panels report `0` (unsupported). `0` is rejected at plan time: the panel clamps any value below 1 up to 1, so a configured `0` could never round-trip. On v3.7.0+ the panel also normalizes an unset `traffic_reset` to `never`.
 - `client_host_rule_ids` (Optional, List of Number) - Numeric host rule IDs bound to this client. Added in 3x-ui v3.11.0. Omit to preserve existing bindings; set `[]` to clear them. IDs identify individual rows returned by the panel's `GET /panel/api/hosts/raw` endpoint.
+- `limit_hwid` (Optional, Number) - Maximum number of distinct device IDs (HWIDs) this client may connect from; the panel enforces it on subscription-linked connections and `0` disables the limit. Added in 3x-ui v3.9.0; older panels ignore the attribute and report `0` (unsupported). Stored in the dedicated client tables, so it only round-trips through this resource, not through `threexui_inbound`.
+- `external_link` (Optional, List of Objects) - External links attached to this client (the Links tab of the client form; the panel merges their outbounds into the client's subscription). Added in 3x-ui v3.9.0. Omit to preserve the panel's list; set `[]` to clear it. Each object supports `kind` (`"link"`, default, a share link the panel's link parser accepts, or `"subscription"`, an http(s) URL), `value` (required), `remark`, `enable` (default `true`), `expiry_time` (Unix ms, `0` = never), and `name_prefix`. Stored in the dedicated client tables, so it only round-trips through this resource, not through `threexui_inbound`.
 - `secret` (Optional, String, Sensitive) - MTProto FakeTLS secret, per-client (3x-ui v3.5.0+, `mtg-multi` engine). Format: `"ee"` + 32 hex chars (random middle) + hex-encoded domain suffix. The panel rebuilds the domain suffix from the inbound's `fakeTlsDomain` on save, so only the random middle must be stable across applies. Setting a domain suffix that differs from the inbound's `fakeTlsDomain` causes drift after the first apply (the panel heals it) — leave unset to let the panel generate it. Leave unset for non-MTProto clients.
 - `secret_wo` (Optional, String, Write-Only) - Write-only MTProto FakeTLS secret. Requires Terraform/OpenTofu 1.11+. Use `secret_wo_version` to trigger later updates without storing the secret in plan or state.
 - `secret_wo_version` (Optional, Number) - Increment this value when `secret_wo` changes. It can only be configured together with `secret_wo`.

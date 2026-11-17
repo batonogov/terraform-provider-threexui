@@ -12,15 +12,18 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -68,6 +71,8 @@ type InboundClientResourceModel struct {
 	TrafficReset      types.String `tfsdk:"traffic_reset"`
 	TrafficResetDay   types.Int64  `tfsdk:"traffic_reset_day"`
 	ClientHostRuleIDs types.List   `tfsdk:"client_host_rule_ids"` // list of int64
+	LimitHwid         types.Int64  `tfsdk:"limit_hwid"`
+	ExternalLink      types.List   `tfsdk:"external_link"` // list of objects
 	Secret            types.String `tfsdk:"secret"`
 	AdTag             types.String `tfsdk:"ad_tag"`
 	RestartXray       types.Bool   `tfsdk:"restart_xray"`
@@ -324,6 +329,68 @@ func (r *InboundClientResource) Schema(_ context.Context, _ resource.SchemaReque
 					listplanmodifier.UseStateForUnknown(),
 				},
 			},
+			"limit_hwid": schema.Int64Attribute{
+				Optional: true,
+				Computed: true,
+				Description: "Maximum number of distinct device IDs (HWIDs) this client may connect from; the panel enforces it on subscription-linked " +
+					"connections and 0 disables the limit. Stored in the dedicated client tables, so it only round-trips through this resource, " +
+					"not through threexui_inbound. 3x-ui v3.9.0+; older panels ignore the attribute and report 0 (unsupported).",
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
+			},
+			"external_link": schema.ListNestedAttribute{
+				Optional: true,
+				Computed: true,
+				Description: "External links attached to this client (the Links tab of the client form; the panel merges their outbounds into the " +
+					"client's subscription). Omit to preserve the panel's list; set [] to clear it. Requires 3x-ui v3.9.0+. " +
+					"Stored in the dedicated client tables, so it only round-trips through this resource, not through threexui_inbound.",
+				PlanModifiers: []planmodifier.List{
+					listplanmodifier.UseStateForUnknown(),
+				},
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"kind": schema.StringAttribute{
+							Optional: true,
+							Computed: true,
+							Default:  stringdefault.StaticString("link"),
+							Description: `Type of the external entry: "link" (a share link the panel's link parser accepts) or ` +
+								`"subscription" (an http(s) URL the panel fetches).`,
+							Validators: []validator.String{
+								stringvalidator.OneOf("link", "subscription"),
+							},
+						},
+						"value": schema.StringAttribute{
+							Required:    true,
+							Description: "Share link (kind = \"link\") or http(s) subscription URL (kind = \"subscription\"). Blank values are silently dropped by the panel, so they are rejected here.",
+							Validators: []validator.String{
+								stringvalidator.LengthAtLeast(1),
+							},
+						},
+						"remark": schema.StringAttribute{
+							Optional:    true,
+							Computed:    true,
+							Description: "Optional display remark.",
+						},
+						"enable": schema.BoolAttribute{
+							Optional:    true,
+							Computed:    true,
+							Default:     booldefault.StaticBool(true),
+							Description: "Include this entry in the client's subscription.",
+						},
+						"expiry_time": schema.Int64Attribute{
+							Optional:    true,
+							Computed:    true,
+							Description: "Unix millisecond timestamp after which the entry stops being served; 0 means never.",
+						},
+						"name_prefix": schema.StringAttribute{
+							Optional:    true,
+							Computed:    true,
+							Description: "Tag prefix the panel strips or adds when importing this entry's outbounds.",
+						},
+					},
+				},
+			},
 			"secret": schema.StringAttribute{
 				Optional:  true,
 				Computed:  true,
@@ -519,6 +586,15 @@ func (r *InboundClientResource) Create(ctx context.Context, req resource.CreateR
 		}
 	}
 
+	// External links are replace-all on a dedicated endpoint; an omitted
+	// attribute preserves the panel's list (empty for a fresh client).
+	if !plan.ExternalLink.IsNull() && !plan.ExternalLink.IsUnknown() {
+		if err := r.client.SetClientExternalLinks(ctx, plan.Email.ValueString(), expandClientExternalLinks(plan.ExternalLink)); err != nil {
+			resp.Diagnostics.AddError("Failed to set client external links", err.Error())
+			return
+		}
+	}
+
 	// Read back from API to populate state. The just-added client may not
 	// be visible to a subsequent GET if SQLite is contended (issue #157),
 	// so poll until it appears or the budget is exhausted.
@@ -602,6 +678,15 @@ func (r *InboundClientResource) Update(ctx context.Context, req resource.UpdateR
 	if err := r.client.UpdateInboundClient(ctx, inboundID, clientID, cur.Email.ValueString(), clientData); err != nil {
 		resp.Diagnostics.AddError("Failed to update inbound client", err.Error())
 		return
+	}
+
+	// Replace-all endpoint; the client record lives at the new email after a
+	// rename, and an omitted attribute preserves the panel's list.
+	if !plan.ExternalLink.IsNull() && !plan.ExternalLink.IsUnknown() {
+		if err := r.client.SetClientExternalLinks(ctx, plan.Email.ValueString(), expandClientExternalLinks(plan.ExternalLink)); err != nil {
+			resp.Diagnostics.AddError("Failed to set client external links", err.Error())
+			return
+		}
 	}
 
 	state, err := r.readClientStateWithRetry(ctx, inboundID, clientID)
@@ -701,7 +786,12 @@ func (r *InboundClientResource) readClientState(ctx context.Context, diags *diag
 		return nil
 	}
 
-	return inboundClientToModel(inboundID, clientID, found)
+	state := inboundClientToModel(inboundID, clientID, found)
+	if err := r.readClientRecordExtras(ctx, state, stringValue(found["email"])); err != nil {
+		diags.AddError("Failed to read client record", err.Error())
+		return nil
+	}
+	return state
 }
 
 // readClientStateWithRetry is the post-write variant of readClientState: it
@@ -725,12 +815,35 @@ func (r *InboundClientResource) readClientStateWithRetry(ctx context.Context, in
 			return false, nil
 		}
 		state = inboundClientToModel(inboundID, clientID, found)
+		if err := r.readClientRecordExtras(ctx, state, stringValue(found["email"])); err != nil {
+			return false, err
+		}
 		return true, nil
 	})
 	if err != nil {
 		return nil, err
 	}
 	return state, nil
+}
+
+// readClientRecordExtras fills limit_hwid and external_link from the dedicated
+// client record API: both live in the client tables (3x-ui v3.9.0+), not in the
+// inbound settings JSON the rest of the state comes from. Pre-v3.1.0 panels
+// have no such API, so the settings-only defaults stay in place there.
+func (r *InboundClientResource) readClientRecordExtras(ctx context.Context, m *InboundClientResourceModel, email string) error {
+	if !r.client.useNewClientAPI(ctx) {
+		return nil
+	}
+	rec, err := r.client.GetClientRecord(ctx, email)
+	if err != nil {
+		return err
+	}
+	if rec == nil {
+		return nil
+	}
+	m.LimitHwid = types.Int64Value(rec.Client.LimitHwid)
+	m.ExternalLink = flattenClientExternalLinks(rec.ExternalLinks)
+	return nil
 }
 
 // ---------------------------------------------------------------------------
@@ -805,6 +918,9 @@ func expandInboundClientFromModel(m *InboundClientResourceModel) map[string]any 
 	if !m.ClientHostRuleIDs.IsNull() && !m.ClientHostRuleIDs.IsUnknown() {
 		client["clientHostRuleIds"] = typesListInt64ToAnySlice(m.ClientHostRuleIDs)
 	}
+	if !m.LimitHwid.IsNull() && !m.LimitHwid.IsUnknown() {
+		client["limitHwid"] = int(m.LimitHwid.ValueInt64())
+	}
 	if !m.Secret.IsNull() && !m.Secret.IsUnknown() {
 		client["secret"] = m.Secret.ValueString()
 	}
@@ -844,8 +960,13 @@ func inboundClientToModel(inboundID int, clientID string, client map[string]any)
 		TrafficReset:      stringValueOrNull(stringValue(client["trafficReset"])),
 		TrafficResetDay:   types.Int64Value(int64(intValue(client["trafficResetDay"]))),
 		ClientHostRuleIDs: flattenClientHostRuleIDs(client["clientHostRuleIds"]),
-		Secret:            stringValueOrNull(stringValue(client["secret"])),
-		AdTag:             stringValueOrNull(stringValue(client["adTag"])),
+		// limitHwid lives in the dedicated client tables, not in the inbound
+		// settings JSON, so the settings read reports 0 and the record merge
+		// below overwrites it on v3.1.0+ panels.
+		LimitHwid:    types.Int64Value(int64(intValue(client["limitHwid"]))),
+		ExternalLink: flattenClientExternalLinks(nil),
+		Secret:       stringValueOrNull(stringValue(client["secret"])),
+		AdTag:        stringValueOrNull(stringValue(client["adTag"])),
 	}
 }
 
@@ -857,6 +978,72 @@ func flattenClientHostRuleIDs(v any) types.List {
 		return types.ListValueMust(types.Int64Type, nil)
 	}
 	return flattenToInt64List(v)
+}
+
+var externalLinkAttrTypes = map[string]attr.Type{
+	"kind":        types.StringType,
+	"value":       types.StringType,
+	"remark":      types.StringType,
+	"enable":      types.BoolType,
+	"expiry_time": types.Int64Type,
+	"name_prefix": types.StringType,
+}
+
+func flattenClientExternalLinks(rows []ClientExternalLink) types.List {
+	elements := make([]attr.Value, 0, len(rows))
+	for _, row := range rows {
+		kind := row.Kind
+		if kind == "" {
+			kind = "link"
+		}
+		enable := true
+		if row.Enable != nil {
+			enable = *row.Enable
+		}
+		elements = append(elements, types.ObjectValueMust(externalLinkAttrTypes, map[string]attr.Value{
+			"kind":        types.StringValue(kind),
+			"value":       types.StringValue(row.Value),
+			"remark":      types.StringValue(row.Remark),
+			"enable":      types.BoolValue(enable),
+			"expiry_time": types.Int64Value(row.ExpiryTime),
+			"name_prefix": types.StringValue(row.NamePrefix),
+		}))
+	}
+	return types.ListValueMust(types.ObjectType{AttrTypes: externalLinkAttrTypes}, elements)
+}
+
+func expandClientExternalLinks(list types.List) []ClientExternalLink {
+	out := make([]ClientExternalLink, 0, len(list.Elements()))
+	for _, element := range list.Elements() {
+		obj, ok := element.(types.Object)
+		if !ok {
+			continue
+		}
+		attrs := obj.Attributes()
+		link := ClientExternalLink{Kind: "link"}
+		if v, ok := attrs["kind"].(types.String); ok && !v.IsNull() && !v.IsUnknown() {
+			link.Kind = v.ValueString()
+		}
+		if v, ok := attrs["value"].(types.String); ok && !v.IsNull() && !v.IsUnknown() {
+			link.Value = v.ValueString()
+		}
+		if v, ok := attrs["remark"].(types.String); ok && !v.IsNull() && !v.IsUnknown() {
+			link.Remark = v.ValueString()
+		}
+		if v, ok := attrs["name_prefix"].(types.String); ok && !v.IsNull() && !v.IsUnknown() {
+			link.NamePrefix = v.ValueString()
+		}
+		if v, ok := attrs["expiry_time"].(types.Int64); ok && !v.IsNull() && !v.IsUnknown() {
+			link.ExpiryTime = v.ValueInt64()
+		}
+		enable := true
+		if v, ok := attrs["enable"].(types.Bool); ok && !v.IsNull() && !v.IsUnknown() {
+			enable = v.ValueBool()
+		}
+		link.Enable = &enable
+		out = append(out, link)
+	}
+	return out
 }
 
 type clientHostRuleIDsValidator struct{}
