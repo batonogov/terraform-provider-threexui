@@ -108,7 +108,7 @@ jobs:
           terraform_wrapper: false
 
       - name: Install tfplugindocs
-        run: go install github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs@v0.21.0
+        run: go install github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs@v0.25.0
 
       - name: Validate docs against provider schema
         run: tfplugindocs validate --provider-name threexui
