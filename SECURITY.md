@@ -33,13 +33,13 @@ The 3x-ui panel issues and stores secrets that this provider reads and writes. T
 
 | Surface | Sensitive fields |
 | --- | --- |
-| Provider config | `password`, `bootstrap_password`, `two_factor_code` |
+| Provider config | `password`, `bootstrap_password`, `two_factor_code`, `api_token` |
 | `threexui_inbound` (`stream_settings.reality_settings`) | `private_key`, `short_ids`, `mldsa65_seed` |
 | `threexui_inbound` (`wireguard_settings`) | `secret_key`, peer `private_key`/`pre_shared_key`, multi-client `clients[].private_key`/`clients[].pre_shared_key` (3x-ui v3.4.2+) |
 | `threexui_inbound` (`amneziawg_settings`) | `server.private_key`, `server.header_protection_key`, `clients[].private_key`/`clients[].pre_shared_key` (3x-ui v3.7.0+) |
 | `threexui_inbound` (`tls_settings`) | `certificates[].key` (inline private key PEM) |
 | `threexui_inbound`, `threexui_xray_outbounds` (`stream_settings`) | `final_mask` (finalmask JSON; salamander and other masks carry passwords) |
-| `threexui_inbound_client` | `id` (contains the client UUID), `client_id`, `password` (trojan/ss), `auth` (hysteria), `secret` (MTProto) |
+| `threexui_inbound_client` | `id` (contains the client UUID), `client_id`, `password` (trojan/ss), `auth` (hysteria), `secret` (MTProto), `external_link` (share links/subscription URLs can embed credentials) |
 | `threexui_panel_general` | `ldap_password` |
 | `threexui_panel_telegram` | `tg_bot_token` |
 | `threexui_panel_discord` | `discord_bot_token` |

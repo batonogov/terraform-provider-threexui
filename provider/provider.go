@@ -28,6 +28,7 @@ type ThreeXUIProviderModel struct {
 	BootstrapUsername  types.String `tfsdk:"bootstrap_username"`
 	BootstrapPassword  types.String `tfsdk:"bootstrap_password"`
 	TwoFactorCode      types.String `tfsdk:"two_factor_code"`
+	ApiToken           types.String `tfsdk:"api_token"`
 	InsecureSkipVerify types.Bool   `tfsdk:"insecure_skip_verify"`
 	RequestTimeout     types.String `tfsdk:"request_timeout"`
 	MaxRetries         types.Int64  `tfsdk:"max_retries"`
@@ -47,10 +48,12 @@ const (
 )
 
 const (
-	envEndpoint           = "THREEXUI_ENDPOINT"
-	envBasePath           = "THREEXUI_BASE_PATH"
-	envUsername           = "THREEXUI_USERNAME"
-	envPassword           = "THREEXUI_PASSWORD"
+	envEndpoint = "THREEXUI_ENDPOINT"
+	envBasePath = "THREEXUI_BASE_PATH"
+	envUsername = "THREEXUI_USERNAME"
+	envPassword = "THREEXUI_PASSWORD"
+	// #nosec G101 -- this is the environment variable NAME, not a credential value.
+	envAPIToken           = "THREEXUI_API_TOKEN"
 	envInsecureSkipVerify = "THREEXUI_INSECURE_SKIP_VERIFY"
 	envRequestTimeout     = "THREEXUI_REQUEST_TIMEOUT"
 	envMaxRetries         = "THREEXUI_MAX_RETRIES"
@@ -114,6 +117,14 @@ func (p *ThreeXUIProvider) Schema(_ context.Context, _ provider.SchemaRequest, r
 				Optional:    true,
 				Sensitive:   true,
 				Description: "TOTP code for 2FA login. Sent with the initial authentication request; automatic re-login will fail once the code expires.",
+			},
+			"api_token": schema.StringAttribute{
+				Optional:  true,
+				Sensitive: true,
+				Description: "Bearer API token for the /panel/api/* surface instead of a username/password session login " +
+					"(3x-ui Settings -> API tokens). Use an admin-scope token: monitor and node-sync scopes only expose status routes. " +
+					"When set, username, password, two_factor_code and bootstrap credentials are ignored. " +
+					"Can also be set via THREEXUI_API_TOKEN environment variable.",
 			},
 			"insecure_skip_verify": schema.BoolAttribute{
 				Optional:    true,
@@ -193,6 +204,7 @@ func (p *ThreeXUIProvider) Configure(ctx context.Context, req provider.Configure
 	if !config.TwoFactorCode.IsNull() && !config.TwoFactorCode.IsUnknown() {
 		twoFactorCode = config.TwoFactorCode.ValueString()
 	}
+	apiToken := envString(config.ApiToken, envAPIToken, "")
 	insecureSkipVerify := false
 	if !config.InsecureSkipVerify.IsNull() && !config.InsecureSkipVerify.IsUnknown() {
 		insecureSkipVerify = config.InsecureSkipVerify.ValueBool()
@@ -246,6 +258,7 @@ func (p *ThreeXUIProvider) Configure(ctx context.Context, req provider.Configure
 		Username:           username,
 		Password:           password,
 		TwoFactorCode:      twoFactorCode,
+		ApiToken:           apiToken,
 		InsecureSkipVerify: insecureSkipVerify,
 		Timeout:            timeout,
 		MaxRetries:         maxRetries,
@@ -255,7 +268,14 @@ func (p *ThreeXUIProvider) Configure(ctx context.Context, req provider.Configure
 		return
 	}
 
-	if bootstrapUsernameSet {
+	if apiToken != "" {
+		// Bearer auth: Login short-circuits to a token probe, and the
+		// bootstrap/session paths stay untouched for credential runs.
+		if err := client.Login(ctx); err != nil {
+			resp.Diagnostics.AddError("Login failed", err.Error())
+			return
+		}
+	} else if bootstrapUsernameSet {
 		usedBootstrap, err := client.LoginWithBootstrapCredentials(ctx, bootstrapUsername, bootstrapPassword)
 		if err != nil {
 			resp.Diagnostics.AddError("Login failed", err.Error())

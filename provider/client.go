@@ -42,11 +42,17 @@ const readAfterWriteBackoff = 500 * time.Millisecond
 const csrfHeaderName = "X-CSRF-Token"
 
 type ClientConfig struct {
-	Endpoint           string
-	BasePath           string
-	Username           string
-	Password           string
-	TwoFactorCode      string
+	Endpoint      string
+	BasePath      string
+	Username      string
+	Password      string
+	TwoFactorCode string
+	// ApiToken authenticates every /panel/api/* request with an
+	// Authorization: Bearer header instead of a session login (3x-ui v3.3.0+,
+	// Settings → API tokens). It needs an admin-scope token; monitor and
+	// node-sync scopes only expose status routes. When set, username/password
+	// and 2FA are ignored.
+	ApiToken           string
 	InsecureSkipVerify bool
 	Timeout            time.Duration
 	// MaxRetries is the maximum number of *additional* attempts on transient
@@ -68,6 +74,7 @@ type Client struct {
 	username                string
 	password                string
 	twoFactor               string
+	apiToken                string
 	httpClient              *http.Client
 	maxRetries              int
 	retryBackoff            time.Duration
@@ -174,6 +181,7 @@ func NewClient(cfg ClientConfig) (*Client, error) {
 		username:                cfg.Username,
 		password:                cfg.Password,
 		twoFactor:               cfg.TwoFactorCode,
+		apiToken:                cfg.ApiToken,
 		httpClient:              client,
 		maxRetries:              maxRetries,
 		retryBackoff:            rb,
@@ -277,6 +285,17 @@ func (c *Client) loginWithCredentialOrderLocked(ctx context.Context, attempts []
 }
 
 func (c *Client) loginLocked(ctx context.Context) error {
+	if c.apiToken != "" {
+		// Bearer auth needs no session or CSRF token; verify the token once
+		// against a real API route so a bad/disabled token or a panel without
+		// API-token support fails at provider configuration
+		// instead of at the first resource call. Raw request, not doRequest:
+		// doRequest's 401 re-login path would recurse into this lock.
+		if err := c.probeAPITokenLocked(ctx); err != nil {
+			return fmt.Errorf("API token authentication failed (check the token, its admin scope, and the panel base path): %w", err)
+		}
+		return nil
+	}
 	csrfToken, err := c.fetchCSRFToken(ctx, "csrf-token", true)
 	if err != nil {
 		return err
@@ -330,6 +349,51 @@ func (c *Client) loginLocked(ctx context.Context) error {
 			return &loginFailedError{message: "login failed"}
 		}
 		return &loginFailedError{message: apiResp.Msg}
+	}
+	return nil
+}
+
+// probeAPITokenLocked issues a GET /panel/api/server/status with the bearer
+// header and fails on any non-success envelope. Monitor-scope tokens also pass
+// this probe; scope violations then surface on the first managed write with the
+// panel's own rejection message.
+func (c *Client) probeAPITokenLocked(ctx context.Context) error {
+	endpoint, err := c.resolvePath("panel/api/server/status")
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, http.NoBody)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.apiToken)
+	req.Header.Set("X-Requested-With", "XMLHttpRequest")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode >= 400 {
+		// 401 = bad or disabled token; 404 = wrong base path or a panel
+		// without API-token support (checkAPIAuth answers 404 for anonymous
+		// non-XHR scans, but this probe sends the XHR header).
+		return httpStatusError(resp.StatusCode, body)
+	}
+	var apiResp apiResponse
+	if err := json.Unmarshal(body, &apiResp); err != nil {
+		return err
+	}
+	if !apiResp.Success {
+		if apiResp.Msg == "" {
+			return errors.New("API token request failed")
+		}
+		return errors.New("API token request failed: " + apiResp.Msg)
 	}
 	return nil
 }
@@ -1029,6 +1093,62 @@ func (c *Client) DeleteInboundClient(ctx context.Context, inboundID int, clientI
 	return err
 }
 
+// ClientExternalLink is one row of a client's external links (the Links tab of
+// the client form; 3x-ui v3.4.0+). Kind "link" must be a share link the panel's
+// link parser accepts; "subscription" must be an http(s) URL. Enable defaults
+// to true server-side when omitted.
+type ClientExternalLink struct {
+	Kind       string `json:"kind"`
+	Value      string `json:"value"`
+	Remark     string `json:"remark"`
+	Enable     *bool  `json:"enable"`
+	ExpiryTime int64  `json:"expiryTime"`
+	NamePrefix string `json:"namePrefix"`
+}
+
+// clientRecordResponse is the subset of GET /panel/api/clients/get/:email the
+// provider reads. limit_hwid and the external links live in the dedicated
+// client tables, not in the inbound settings JSON, so they need this read.
+type clientRecordResponse struct {
+	Client struct {
+		LimitHwid int64 `json:"limitHwid"`
+	} `json:"client"`
+	ExternalLinks []ClientExternalLink `json:"externalLinks"`
+}
+
+// GetClientRecord fetches the dedicated client record by email (v3.1.0+
+// /panel/api/clients/get/:email). Returns (nil, nil) when the record is gone so
+// callers fall back to the settings-only state.
+func (c *Client) GetClientRecord(ctx context.Context, email string) (*clientRecordResponse, error) {
+	if email == "" {
+		return nil, errors.New("client email is required for get record")
+	}
+	relPath := fmt.Sprintf("panel/api/clients/get/%s", url.PathEscape(email))
+	var out clientRecordResponse
+	if err := c.doJSON(ctx, http.MethodGet, relPath, nil, &out); err != nil {
+		if isHTTPNotFound(err) || isAPIRecordNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &out, nil
+}
+
+// SetClientExternalLinks replaces the client's full external-links list (POST
+// /panel/api/clients/:email/externalLinks, 3x-ui v3.4.0+). The endpoint is
+// replace-all, so the operation is idempotent and safe to retry.
+func (c *Client) SetClientExternalLinks(ctx context.Context, email string, links []ClientExternalLink) error {
+	if email == "" {
+		return errors.New("client email is required for external links")
+	}
+	if links == nil {
+		links = []ClientExternalLink{}
+	}
+	relPath := fmt.Sprintf("panel/api/clients/%s/externalLinks", url.PathEscape(email))
+	payload := map[string]any{"externalLinks": links}
+	return c.doJSONRetryable(ctx, http.MethodPost, relPath, payload, nil)
+}
+
 func (c *Client) GetServerStatus(ctx context.Context) (map[string]any, error) {
 	var out map[string]any
 	if err := c.doJSON(ctx, http.MethodGet, "panel/api/server/status", nil, &out); err != nil {
@@ -1645,6 +1765,9 @@ func (c *Client) doRequestOnce(ctx context.Context, method, endpoint, contentTyp
 	}
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
+	}
+	if c.apiToken != "" {
+		req.Header.Set("Authorization", "Bearer "+c.apiToken)
 	}
 	if requiresCSRF(method) {
 		c.authMu.Lock()

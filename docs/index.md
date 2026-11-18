@@ -57,6 +57,7 @@ The following provider attributes can be set via `THREEXUI_*` environment variab
 | `base_path` | `THREEXUI_BASE_PATH` | `/` |
 | `username` | `THREEXUI_USERNAME` | `admin` |
 | `password` | `THREEXUI_PASSWORD` | `admin` |
+| `api_token` | `THREEXUI_API_TOKEN` | _(none)_ |
 | `insecure_skip_verify` | `THREEXUI_INSECURE_SKIP_VERIFY` | `false` |
 | `request_timeout` | `THREEXUI_REQUEST_TIMEOUT` | `30s` |
 | `max_retries` | `THREEXUI_MAX_RETRIES` | `1` |
@@ -105,6 +106,19 @@ Before each later rotation, set `bootstrap_username` and `bootstrap_password` to
 
 -> **Note:** The provider has **partial** 2FA support. You can supply a TOTP code via the `two_factor_code` attribute, and it will be sent with the initial login request. However, TOTP codes expire every 30 seconds. Because the provider performs automatic re-login when the session expires (on HTTP 401/404), subsequent logins will fail once the original code is no longer valid. For short-lived operations (a single `terraform apply`) this may work, but long-running or repeated runs will require a fresh code each time.
 
+### API token authentication
+
+As an alternative to username/password, set `api_token` (or `THREEXUI_API_TOKEN`) to a bearer API token from the panel's **Settings → API tokens**. Every `/panel/api/*` request then carries an `Authorization: Bearer` header and the session login, CSRF handling and 2FA are skipped entirely. Use an **admin**-scope token: `monitor` and `node-sync` scopes only expose status routes. Available on every supported panel (API tokens exist since 3x-ui v3.3.0); the provider probes the token at configuration time, so a bad or disabled token fails before any resource call. `username`, `password`, `two_factor_code` and bootstrap credentials are ignored when a token is configured.
+
+```hcl
+provider "threexui" {
+  endpoint  = "https://panel.example.com"
+  api_token = var.threexui_api_token
+}
+```
+
+Tokens are revocable per-name in the panel and avoid putting the admin password (or a 2FA code) into provider configuration. The provider consumes tokens but does not create them: mint one in the panel UI or via the panel API.
+
 ## Argument Reference
 
 - `endpoint` (Optional, String) - Base URL of the 3x-ui panel, e.g. `http://localhost:2053`. Can also be set via `THREEXUI_ENDPOINT` environment variable.
@@ -114,8 +128,19 @@ Before each later rotation, set `bootstrap_username` and `bootstrap_password` to
 - `bootstrap_username` (Optional, String) - Bootstrap username for explicit first-run credential rotation. On 3x-ui v2.9.x it is tried before the primary `username`/`password` to avoid exposing the desired password in failed-login logs; on 3x-ui v3.x it is tried only after the primary credentials are rejected. Must be set together with `bootstrap_password`.
 - `bootstrap_password` (Optional, String, Sensitive) - Bootstrap password for explicit first-run credential rotation. On 3x-ui v2.9.x it is tried before the primary `username`/`password` to avoid exposing the desired password in failed-login logs; on 3x-ui v3.x it is tried only after the primary credentials are rejected. Must be set together with `bootstrap_username`.
 - `two_factor_code` (Optional, String, Sensitive) - TOTP code for 2FA login. Used for the initial authentication request. See the note above about re-login limitations.
+- `api_token` (Optional, String, Sensitive) - Bearer API token for the `/panel/api/*` surface instead of a username/password session login (3x-ui v3.3.0+, **Settings → API tokens**). Use an **admin**-scope token. When set, `username`, `password`, `two_factor_code` and bootstrap credentials are ignored. Can also be set via `THREEXUI_API_TOKEN` environment variable.
 - `insecure_skip_verify` (Optional, Boolean) - Skip TLS certificate verification (useful for self-signed certs). Default is `false`. Can also be set via `THREEXUI_INSECURE_SKIP_VERIFY` environment variable.
 - `request_timeout` (Optional, String) - HTTP request timeout (e.g. `30s`, `1m`). Default is `30s`. Can also be set via `THREEXUI_REQUEST_TIMEOUT` environment variable.
 - `max_retries` (Optional, Number) - Maximum number of additional attempts on transient HTTP 5xx responses for **idempotent write endpoints only** (`UpdateInbound`, `UpdateInboundClient`, `UpdateSettings`, `UpdateXrayTemplate`, `SetXrayOutboundTestURL`). Each retry waits 500ms and emits a `Warn`-level log entry, so upstream flakiness is observable rather than silently absorbed. Set to `0` to disable retries entirely. Allowed range: `0..10`. Default is `1`. Can also be set via `THREEXUI_MAX_RETRIES` environment variable.
 
 -> **Why this exists:** 3x-ui's pre-v2.9.0 inbound update path was not transactional, and a panic in the panel's handler goroutine surfaced as a 5xx via `gin.Recovery`. v2.9.0 reworked the path to run inside a SQLite transaction (`buildRuntimeInboundForAPI(tx, ...)`) and is more robust, but transient upstream 5xx responses can still happen under write pressure. The retry is scoped to write endpoints whose service-level handlers replace the entire row by id (truly idempotent at the SQL level), so repeating the same request after a transient failure is safe.
+
+## Panel API surfaces outside this provider
+
+Not every `/panel/api/*` route maps to a Terraform resource. Surfaces that are runtime state or one-shot actions stay out of scope on purpose:
+
+- **HWID device registry** — listing and clearing individual devices is imperative; the declarative per-client `limit_hwid` cap is managed by `threexui_inbound_client`.
+- **API-token lifecycle** — tokens are consumed through the provider's `api_token` attribute, not created or revoked by it.
+- **Client groups** — membership is the client `group` attribute; a separate group resource would fight the panel's "deleting a group clears the label on every member" behavior.
+- **Outbound subscriptions** (`/panel/api/xray/outbound-subs`) — not managed yet.
+- **Imperative operations** — traffic resets and quota edits, bulk enable/delete, link and QR helpers, panel or geofile updates, backup/restore. Read-only views are exposed as data sources where they fit (`threexui_online_clients`, `threexui_client_traffics`, `threexui_server_status`).
