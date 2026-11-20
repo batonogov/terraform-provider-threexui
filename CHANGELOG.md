@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.34.0](https://github.com/batonogov/terraform-provider-threexui/compare/v3.33.3...v3.34.0) (2026-11-20)
+
+
+### Features
+
+* provider API token auth, client HWID limit and external links ([#511](https://github.com/batonogov/terraform-provider-threexui/issues/511)) ([73cc3f1](https://github.com/batonogov/terraform-provider-threexui/commit/73cc3f1aab03d2748ca4625cc75e71173ca282ba))
+
 ## [3.33.3](https://github.com/batonogov/terraform-provider-threexui/compare/v3.33.2...v3.33.3) (2026-11-16)
 
 
