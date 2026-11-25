@@ -118,7 +118,7 @@ func xrayObservatorySchema() schema.Schema {
 					Attributes: map[string]schema.Attribute{
 						"tag": schema.StringAttribute{
 							Required:    true,
-							Description: "Tag identifying this burst observatory entry.",
+							Description: "Tag identifying this burst observatory entry. Use default for a single flat Xray-core burst observatory.",
 						},
 						"subject_selector": schema.ListAttribute{
 							Optional:    true,
@@ -501,6 +501,9 @@ func buildBurstObservatoryObject(list []any) map[string]any {
 			entry["pingConfig"] = v
 		}
 		if len(entry) > 0 {
+			if tag == flatObservatoryTag && len(list) == 1 {
+				return entry
+			}
 			obj[tag] = entry
 		}
 	}
@@ -572,7 +575,29 @@ func flattenObservatoryObject(obj map[string]any) []any {
 	return out
 }
 
+// flattenBurstObservatoryObject converts a wire JSON object keyed by tag into a
+// flat list of entry maps with snake_case keys (including a "tag" field).
+// Xray's burstObservatory is a singleton {subjectSelector, pingConfig} object,
+// not a tag-keyed map, so a flat object written for the "default" tag is
+// mapped back onto that tag on read.
 func flattenBurstObservatoryObject(obj map[string]any) []any {
+	if v, ok := obj["subjectSelector"]; ok {
+		if _, isTaggedEntry := v.(map[string]any); !isTaggedEntry {
+			return flattenBurstObservatoryObject(map[string]any{flatObservatoryTag: obj})
+		}
+	}
+	if v, ok := obj["pingConfig"].(map[string]any); ok {
+		// A flat singleton without a subject selector is {"pingConfig":
+		// {...}}. An entry written by this provider always contains a
+		// subjectSelector and/or pingConfig key (empty entries are dropped
+		// on write), so a value with neither is the singleton's ping config,
+		// not an entry.
+		if _, hasSelector := v["subjectSelector"]; !hasSelector {
+			if _, hasNested := v["pingConfig"]; !hasNested {
+				return flattenBurstObservatoryObject(map[string]any{flatObservatoryTag: obj})
+			}
+		}
+	}
 	out := make([]any, 0, len(obj))
 	for tag, raw := range obj {
 		m, ok := raw.(map[string]any)

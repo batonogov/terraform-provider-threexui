@@ -16,7 +16,7 @@ The resource owns both top-level Xray template keys: `observatory` and `burstObs
 ```terraform
 resource "threexui_xray_observatory" "obs" {
   observatory {
-    tag                = "obs_ping"
+    tag                = "default"
     subject_selector   = ["proxy-*"]
     probe_url          = "https://www.google.com/generate_204"
     probe_interval     = "1m"
@@ -24,7 +24,7 @@ resource "threexui_xray_observatory" "obs" {
   }
 
   burst_observatory {
-    tag              = "burst_ping"
+    tag              = "default"
     subject_selector = ["proxy-*"]
 
     ping_config {
@@ -40,6 +40,15 @@ resource "threexui_xray_observatory" "obs" {
 }
 ```
 
+## Notes
+
+- Xray-core (v26.6.27+) reads both sections as single flat objects. Use
+  `tag = "default"` for the entry Xray should apply; other tags round-trip
+  through Terraform state for migration but are not read by Xray.
+- `burst_observatory` must include `ping_config`: Xray-core refuses to start
+  with a burst observatory that has no ping config ("BurstObservatory requires
+  a valid pingConfig").
+
 ## Argument Reference
 
 ### observatory (Optional, Block List)
@@ -52,7 +61,7 @@ resource "threexui_xray_observatory" "obs" {
 
 ### burst_observatory (Optional, Block List)
 
-- `tag` (Required, String) - BurstObservatory tag.
+- `tag` (Required, String) - Use `default` for a single flat Xray burst observatory.
 - `subject_selector` (Optional+Computed, List of String) - Outbound tag prefixes or patterns to probe.
 - `ping_config` (Optional, Block List, Max: 1) - Burst probing configuration.
 

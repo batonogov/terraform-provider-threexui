@@ -569,3 +569,146 @@ func TestXrayObservatoryFlatRoundTrip(t *testing.T) {
 		t.Fatalf("observatory changed on refresh: got %#v", got)
 	}
 }
+
+// TestBurstObservatoryFlatRoundTrip verifies that a single default burst entry
+// uses Xray's singleton wire format and keeps its Terraform identity on refresh.
+func TestBurstObservatoryFlatRoundTrip(t *testing.T) {
+	model := &XrayObservatoryModel{
+		BurstObservatory: []XrayBurstObservatory{{
+			Tag:             types.StringValue("default"),
+			SubjectSelector: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("proxy-")}),
+			PingConfig: []XrayBurstPingConfig{{
+				Destination:    types.StringValue("https://example.org/generate_204"),
+				Interval:       types.StringValue("1m"),
+				ConnectTimeout: types.StringValue("5s"),
+				Timeout:        types.StringValue("10s"),
+				Samples:        types.Int64Value(3),
+				SamplingCount:  types.Int64Value(2),
+				Lazy:           types.BoolValue(true),
+			}},
+		}},
+	}
+	wire := buildXrayObservatoryJSON(expandXrayObservatory(model)).(map[string]any)
+	burst := wire["burstObservatory"].(map[string]any)
+	selector, ok := burst["subjectSelector"].([]string)
+	if !ok || len(selector) != 1 || selector[0] != "proxy-" {
+		t.Fatalf("expected flat subjectSelector, got %#v", burst)
+	}
+	if _, ok := burst["pingConfig"].(map[string]any); !ok {
+		t.Fatalf("expected flat pingConfig object, got %#v", burst)
+	}
+	raw, err := json.Marshal(wire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := flattenXrayObservatory(flattenXrayObservatoryToMap(string(raw)))
+	if len(result.BurstObservatory) != 1 {
+		t.Fatalf("expected one burst observatory after refresh, got %d", len(result.BurstObservatory))
+	}
+	got := result.BurstObservatory[0]
+	want := model.BurstObservatory[0]
+	if !got.Tag.Equal(want.Tag) || !got.SubjectSelector.Equal(want.SubjectSelector) {
+		t.Fatalf("burst observatory changed on refresh: got %#v", got)
+	}
+	if len(got.PingConfig) != 1 {
+		t.Fatalf("expected one ping config after refresh, got %d", len(got.PingConfig))
+	}
+	gp, wp := got.PingConfig[0], want.PingConfig[0]
+	if !gp.Destination.Equal(wp.Destination) || !gp.Interval.Equal(wp.Interval) ||
+		!gp.ConnectTimeout.Equal(wp.ConnectTimeout) || !gp.Timeout.Equal(wp.Timeout) ||
+		!gp.Samples.Equal(wp.Samples) || !gp.SamplingCount.Equal(wp.SamplingCount) ||
+		!gp.Lazy.Equal(wp.Lazy) {
+		t.Fatalf("burst ping config changed on refresh: got %#v", gp)
+	}
+}
+
+// TestBurstObservatoryFlatGuards pins the tag-keyed fallbacks: only a single
+// entry with tag "default" may use the flat singleton form, and a tag literally
+// named "pingConfig" must not be read back as the flat form.
+func TestBurstObservatoryFlatGuards(t *testing.T) {
+	single := buildBurstObservatoryObject([]any{
+		map[string]any{"tag": "burst1", "subjectSelector": []any{"proxy-"}},
+	})
+	if len(single) != 1 {
+		t.Fatalf("expected one tag-keyed entry, got %#v", single)
+	}
+	if _, ok := single["burst1"]; !ok {
+		t.Fatalf("expected tag-keyed burst1 entry, got %#v", single)
+	}
+
+	two := buildBurstObservatoryObject([]any{
+		map[string]any{"tag": "default", "subjectSelector": []any{"proxy-"}},
+		map[string]any{"tag": "relay", "subjectSelector": []any{"direct-"}},
+	})
+	if len(two) != 2 {
+		t.Fatalf("expected two tag-keyed entries, got %#v", two)
+	}
+	if _, ok := two["default"]; !ok {
+		t.Fatalf("expected tag-keyed default entry, got %#v", two)
+	}
+
+	read := flattenBurstObservatoryObject(map[string]any{
+		"pingConfig": map[string]any{"subjectSelector": []any{"proxy-"}},
+	})
+	if len(read) != 1 {
+		t.Fatalf("expected one entry, got %#v", read)
+	}
+	if entry, _ := read[0].(map[string]any); entry["tag"] != "pingConfig" {
+		t.Fatalf("expected tag pingConfig, got %#v", entry)
+	}
+
+	// The same tag with a ping-only entry: the nested pingConfig key is what
+	// keeps it tag-keyed, so the hasNested branch must not re-wrap it as flat.
+	read = flattenBurstObservatoryObject(map[string]any{
+		"pingConfig": map[string]any{"pingConfig": map[string]any{"destination": "d"}},
+	})
+	if len(read) != 1 {
+		t.Fatalf("expected one entry, got %#v", read)
+	}
+	if entry, _ := read[0].(map[string]any); entry["tag"] != "pingConfig" {
+		t.Fatalf("expected tag pingConfig, got %#v", entry)
+	}
+}
+
+// TestBurstObservatoryFlatPingOnlyRoundTrip covers the flat singleton without a
+// subject selector: {"pingConfig": {...}} must not be read back as an entry
+// named "pingConfig".
+func TestBurstObservatoryFlatPingOnlyRoundTrip(t *testing.T) {
+	model := &XrayObservatoryModel{
+		BurstObservatory: []XrayBurstObservatory{{
+			Tag:             types.StringValue("default"),
+			SubjectSelector: types.ListNull(types.StringType),
+			PingConfig: []XrayBurstPingConfig{{
+				Destination: types.StringValue("https://example.org/generate_204"),
+				Interval:    types.StringValue("1m"),
+				Timeout:     types.StringValue("5s"),
+			}},
+		}},
+	}
+	wire := buildXrayObservatoryJSON(expandXrayObservatory(model)).(map[string]any)
+	burst := wire["burstObservatory"].(map[string]any)
+	if _, ok := burst["subjectSelector"]; ok {
+		t.Fatalf("expected no subjectSelector in flat wire form, got %#v", burst)
+	}
+	if _, ok := burst["pingConfig"].(map[string]any); !ok {
+		t.Fatalf("expected flat pingConfig object at top level, got %#v", burst)
+	}
+	raw, err := json.Marshal(wire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := flattenXrayObservatory(flattenXrayObservatoryToMap(string(raw)))
+	if len(result.BurstObservatory) != 1 {
+		t.Fatalf("expected one burst entry, got %d", len(result.BurstObservatory))
+	}
+	got := result.BurstObservatory[0]
+	if !got.Tag.Equal(types.StringValue("default")) {
+		t.Fatalf("expected tag default after refresh, got %v", got.Tag)
+	}
+	if got.SubjectSelector.IsNull() || got.SubjectSelector.IsUnknown() {
+		t.Fatalf("expected a valid empty subject selector list, got %#v", got.SubjectSelector)
+	}
+	if len(got.PingConfig) != 1 || !got.PingConfig[0].Destination.Equal(model.BurstObservatory[0].PingConfig[0].Destination) {
+		t.Fatalf("ping config changed on refresh: got %#v", got.PingConfig)
+	}
+}
