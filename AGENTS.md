@@ -177,4 +177,9 @@
   panel; panel compatibility and PostgreSQL jobs use only the default Terraform.
 - Conventional commits feed Release Please/GoReleaser. Keep workflow actions pinned
   to commit SHAs and update pre-commit hooks with `pre-commit autoupdate --freeze`.
+  Release config lives in `release-please-config.json` (manifest mode, versions in
+  `.release-please-manifest.json`); the action ignores that file when `release-type`
+  is set in `release-please.yml`, so keep it out of the workflow. Do not hand-edit
+  `.release-please-manifest.json`: release-please keeps it in sync via the release
+  PR, and a stale value makes the next bump start from the wrong base.
 - Put scratch output in git-ignored `artifacts/`, not the repository root.
