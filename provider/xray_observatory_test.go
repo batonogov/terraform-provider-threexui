@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -531,5 +532,40 @@ func TestApplyObservatoryDesiredShape(t *testing.T) {
 	}
 	if _, ok := entry["subjectSelector"]; !ok {
 		t.Fatalf("expected subjectSelector preserved at root[observatory][obs_default], got %v", entry)
+	}
+}
+
+// TestXrayObservatoryFlatRoundTrip verifies that the default observatory uses
+// Xray's singleton wire format and keeps its Terraform identity on refresh.
+func TestXrayObservatoryFlatRoundTrip(t *testing.T) {
+	model := &XrayObservatoryModel{
+		Observatory: []XrayObservatoryEntry{{
+			Tag:               types.StringValue("default"),
+			SubjectSelector:   types.ListValueMust(types.StringType, []attr.Value{types.StringValue("relay-")}),
+			ProbeURL:          types.StringValue("https://example.org/generate_204"),
+			ProbeInterval:     types.StringValue("1m"),
+			EnableConcurrency: types.BoolValue(true),
+		}},
+	}
+	wire := buildXrayObservatoryJSON(expandXrayObservatory(model)).(map[string]any)
+	obs := wire["observatory"].(map[string]any)
+	selector, ok := obs["subjectSelector"].([]string)
+	if !ok || len(selector) != 1 || selector[0] != "relay-" {
+		t.Fatalf("expected flat subjectSelector, got %#v", obs)
+	}
+	raw, err := json.Marshal(wire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := flattenXrayObservatory(flattenXrayObservatoryToMap(string(raw)))
+	if len(result.Observatory) != 1 {
+		t.Fatalf("expected one observatory after refresh, got %d", len(result.Observatory))
+	}
+	got := result.Observatory[0]
+	want := model.Observatory[0]
+	if !got.Tag.Equal(want.Tag) || !got.SubjectSelector.Equal(want.SubjectSelector) ||
+		!got.ProbeURL.Equal(want.ProbeURL) || !got.ProbeInterval.Equal(want.ProbeInterval) ||
+		!got.EnableConcurrency.Equal(want.EnableConcurrency) {
+		t.Fatalf("observatory changed on refresh: got %#v", got)
 	}
 }
