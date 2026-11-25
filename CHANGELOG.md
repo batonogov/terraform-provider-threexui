@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.34.1](https://github.com/batonogov/terraform-provider-threexui/compare/v3.34.0...v3.34.1) (2026-11-25)
+
+
+### Bug Fixes
+
+* **xray:** support the flat Xray burst observatory format ([#517](https://github.com/batonogov/terraform-provider-threexui/issues/517)) ([f978bcb](https://github.com/batonogov/terraform-provider-threexui/commit/f978bcb4b991c5fdc0c0a49ae7daf3eba32314f3))
+
 ## [3.34.0](https://github.com/batonogov/terraform-provider-threexui/compare/v3.33.3...v3.34.0) (2026-11-20)
 
 
