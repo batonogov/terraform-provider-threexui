@@ -44,7 +44,7 @@ resource "threexui_xray_observatory" "obs" {
 
 ### observatory (Optional, Block List)
 
-- `tag` (Required, String) - Observatory tag.
+- `tag` (Required, String) - Use `default` for a single flat Xray observatory.
 - `subject_selector` (Optional+Computed, List of String) - Outbound tag prefixes or patterns to probe.
 - `probe_url` (Optional, String) - URL to probe for latency.
 - `probe_interval` (Optional, String) - Probe interval (e.g. `1m`, `30s`).

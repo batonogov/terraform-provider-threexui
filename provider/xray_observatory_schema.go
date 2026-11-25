@@ -75,7 +75,7 @@ func xrayObservatorySchema() schema.Schema {
 					Attributes: map[string]schema.Attribute{
 						"tag": schema.StringAttribute{
 							Required:    true,
-							Description: "Tag identifying this observatory entry.",
+							Description: "Tag identifying this observatory entry. Use default for a single flat Xray-core observatory.",
 						},
 						"subject_selector": schema.ListAttribute{
 							Optional:    true,
@@ -444,9 +444,10 @@ func buildXrayObservatoryJSON(d map[string]any) any {
 	return payload
 }
 
-// buildObservatoryObject turns a flat list of entry maps (each with a "tag"
-// key) into a map keyed by tag. Each entry's fields are converted from
-// snake_case to camelCase.
+// flatObservatoryTag opts into the singleton format accepted by Xray-core.
+const flatObservatoryTag = "default"
+
+// buildObservatoryObject emits the Xray singleton or preserves tagged entries.
 func buildObservatoryObject(list []any) map[string]any {
 	obj := map[string]any{}
 	for _, item := range list {
@@ -472,6 +473,9 @@ func buildObservatoryObject(list []any) map[string]any {
 			entry["enableConcurrency"] = v
 		}
 		if len(entry) > 0 {
+			if tag == flatObservatoryTag && len(list) == 1 {
+				return entry
+			}
 			obj[tag] = entry
 		}
 	}
@@ -536,6 +540,13 @@ func flattenXrayObservatoryToMap(data any) map[string]any {
 // flattenObservatoryObject converts a wire JSON object keyed by tag into a
 // flat list of entry maps with snake_case keys (including a "tag" field).
 func flattenObservatoryObject(obj map[string]any) []any {
+	for _, field := range []string{"subjectSelector", "probeURL", "probeInterval", "enableConcurrency"} {
+		if value, ok := obj[field]; ok {
+			if _, isTaggedEntry := value.(map[string]any); !isTaggedEntry {
+				return flattenObservatoryObject(map[string]any{flatObservatoryTag: obj})
+			}
+		}
+	}
 	out := make([]any, 0, len(obj))
 	for tag, raw := range obj {
 		m, ok := raw.(map[string]any)
