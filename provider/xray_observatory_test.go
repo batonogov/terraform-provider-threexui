@@ -656,6 +656,18 @@ func TestBurstObservatoryFlatGuards(t *testing.T) {
 	if entry, _ := read[0].(map[string]any); entry["tag"] != "pingConfig" {
 		t.Fatalf("expected tag pingConfig, got %#v", entry)
 	}
+
+	// The same tag with a ping-only entry: the nested pingConfig key is what
+	// keeps it tag-keyed, so the hasNested branch must not re-wrap it as flat.
+	read = flattenBurstObservatoryObject(map[string]any{
+		"pingConfig": map[string]any{"pingConfig": map[string]any{"destination": "d"}},
+	})
+	if len(read) != 1 {
+		t.Fatalf("expected one entry, got %#v", read)
+	}
+	if entry, _ := read[0].(map[string]any); entry["tag"] != "pingConfig" {
+		t.Fatalf("expected tag pingConfig, got %#v", entry)
+	}
 }
 
 // TestBurstObservatoryFlatPingOnlyRoundTrip covers the flat singleton without a
@@ -677,6 +689,9 @@ func TestBurstObservatoryFlatPingOnlyRoundTrip(t *testing.T) {
 	burst := wire["burstObservatory"].(map[string]any)
 	if _, ok := burst["subjectSelector"]; ok {
 		t.Fatalf("expected no subjectSelector in flat wire form, got %#v", burst)
+	}
+	if _, ok := burst["pingConfig"].(map[string]any); !ok {
+		t.Fatalf("expected flat pingConfig object at top level, got %#v", burst)
 	}
 	raw, err := json.Marshal(wire)
 	if err != nil {
