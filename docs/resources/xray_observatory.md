@@ -52,7 +52,7 @@ resource "threexui_xray_observatory" "obs" {
 
 ### burst_observatory (Optional, Block List)
 
-- `tag` (Required, String) - BurstObservatory tag.
+- `tag` (Required, String) - Use `default` for a single flat Xray burst observatory.
 - `subject_selector` (Optional+Computed, List of String) - Outbound tag prefixes or patterns to probe.
 - `ping_config` (Optional, Block List, Max: 1) - Burst probing configuration.
 

@@ -80,6 +80,66 @@ func TestAccXrayObservatoryImport(t *testing.T) {
 	})
 }
 
+// TestAccXrayObservatoryFlat migrates a tag-keyed configuration to the flat
+// Xray singleton form (tag "default") and requires an empty plan afterwards,
+// proving read-back convergence on a live panel.
+func TestAccXrayObservatoryFlat(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: testAccProviderConfig() + testAccXrayObservatoryConfig(),
+			},
+			{
+				Config: testAccProviderConfig() + testAccXrayObservatoryFlatConfig(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("threexui_xray_observatory.test", "observatory.#", "1"),
+					resource.TestCheckResourceAttr("threexui_xray_observatory.test", "observatory.0.tag", "default"),
+					resource.TestCheckResourceAttr("threexui_xray_observatory.test", "observatory.0.subject_selector.0", "proxy-*"),
+					resource.TestCheckResourceAttr("threexui_xray_observatory.test", "observatory.0.probe_interval", "1m"),
+					resource.TestCheckResourceAttr("threexui_xray_observatory.test", "burst_observatory.#", "1"),
+					resource.TestCheckResourceAttr("threexui_xray_observatory.test", "burst_observatory.0.tag", "default"),
+					resource.TestCheckResourceAttr("threexui_xray_observatory.test", "burst_observatory.0.subject_selector.0", "proxy-*"),
+					resource.TestCheckResourceAttr("threexui_xray_observatory.test", "burst_observatory.0.ping_config.0.destination", "https://www.cloudflare.com/cdn-cgi/trace"),
+					resource.TestCheckResourceAttr("threexui_xray_observatory.test", "burst_observatory.0.ping_config.0.samples", "3"),
+				),
+			},
+			{
+				Config:             testAccProviderConfig() + testAccXrayObservatoryFlatConfig(),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
+func testAccXrayObservatoryFlatConfig() string {
+	return `
+resource "threexui_xray_observatory" "test" {
+  observatory {
+    tag                = "default"
+    subject_selector   = ["proxy-*"]
+    probe_url          = "https://www.google.com/generate_204"
+    probe_interval     = "1m"
+    enable_concurrency = true
+  }
+
+  burst_observatory {
+    tag              = "default"
+    subject_selector = ["proxy-*"]
+
+    ping_config {
+      destination = "https://www.cloudflare.com/cdn-cgi/trace"
+      interval    = "1m"
+      timeout     = "5s"
+      samples     = 3
+    }
+  }
+}
+`
+}
+
 func testAccXrayObservatoryConfig() string {
 	return `
 resource "threexui_xray_observatory" "test" {
