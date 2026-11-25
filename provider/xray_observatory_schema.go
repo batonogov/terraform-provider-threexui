@@ -588,9 +588,10 @@ func flattenBurstObservatoryObject(obj map[string]any) []any {
 	}
 	if v, ok := obj["pingConfig"].(map[string]any); ok {
 		// A flat singleton without a subject selector is {"pingConfig":
-		// {...}}. A tag-keyed entry always contains a subjectSelector and/or
-		// pingConfig key, so a value with neither is the singleton's ping
-		// config, not an entry.
+		// {...}}. An entry written by this provider always contains a
+		// subjectSelector and/or pingConfig key (empty entries are dropped
+		// on write), so a value with neither is the singleton's ping config,
+		// not an entry.
 		if _, hasSelector := v["subjectSelector"]; !hasSelector {
 			if _, hasNested := v["pingConfig"]; !hasNested {
 				return flattenBurstObservatoryObject(map[string]any{flatObservatoryTag: obj})
